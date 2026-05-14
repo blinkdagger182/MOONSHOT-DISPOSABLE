@@ -837,7 +837,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                 wrapper.addChildNode(child.clone())
             }
             let modelHalfDepth = normalizeModel(wrapper)
-            applyCameraScreenTexture(to: wrapper)
+            attachCameraScreenTexture(to: wrapper)
             wrapper.eulerAngles.x = 0
             wrapper.eulerAngles.y = .pi
             phoneNode.addChildNode(wrapper)
@@ -870,20 +870,44 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             return (depth * scale) / 2
         }
 
-        private func applyCameraScreenTexture(to root: SCNNode) {
+        private func attachCameraScreenTexture(to root: SCNNode) {
             let screenImage = cameraScreenImage()
             func visit(_ node: SCNNode) {
                 if let geometry = node.geometry {
-                    for material in geometry.materials where material.name == "Display" {
+                    if geometry.materials.contains(where: { $0.name == "Display" }) {
+                        let bounds = node.boundingBox
+                        let width = (bounds.max.x - bounds.min.x) * 0.985
+                        let height = (bounds.max.y - bounds.min.y) * 0.985
+                        let displayPlane = SCNPlane(width: CGFloat(width), height: CGFloat(height))
+                        let material = SCNMaterial()
                         material.diffuse.contents = screenImage
                         material.diffuse.wrapS = .clamp
                         material.diffuse.wrapT = .clamp
                         material.diffuse.magnificationFilter = .linear
                         material.diffuse.minificationFilter = .linear
                         material.emission.contents = screenImage
-                        material.roughness.contents = 0.55
-                        material.metalness.contents = 0
+                        material.isDoubleSided = false
+                        material.writesToDepthBuffer = false
+                        material.readsFromDepthBuffer = false
                         material.lightingModel = .constant
+                        displayPlane.materials = [material]
+
+                        let displayNode = SCNNode(geometry: displayPlane)
+                        displayNode.position = SCNVector3(
+                            (bounds.min.x + bounds.max.x) / 2,
+                            (bounds.min.y + bounds.max.y) / 2,
+                            bounds.max.z + 0.0001
+                        )
+                        displayNode.renderingOrder = 80
+                        node.addChildNode(displayNode)
+
+                        geometry.materials.forEach { material in
+                            if material.name == "Display" {
+                                material.diffuse.contents = UIColor.black
+                                material.emission.contents = UIColor.black
+                            }
+                        }
+                        return
                     }
                 }
 
