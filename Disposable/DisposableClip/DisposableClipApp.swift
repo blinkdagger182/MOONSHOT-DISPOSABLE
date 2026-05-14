@@ -18,7 +18,7 @@ struct DisposableClipApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(eventId: eventId)
+            BrowserClipExperience(eventId: eventId)
                 .onOpenURL { url in
                     handleIncomingURL(url)
                 }

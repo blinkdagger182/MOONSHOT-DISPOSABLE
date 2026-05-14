@@ -17,7 +17,7 @@ class CameraModel: NSObject, ObservableObject {
     @Published var previewLayer: AVCaptureVideoPreviewLayer?
     @Published var output = AVCapturePhotoOutput()
     @Published var previewImage: UIImage?
-    @Published var currentCameraPosition: AVCaptureDevice.Position = .back
+    @Published var currentCameraPosition: AVCaptureDevice.Position = .front
     @Published var isFlashOn: Bool = false
     @Published var maxPhotos: Int = 0
     @Published var remainingPhotos: Int = 0
@@ -44,10 +44,14 @@ class CameraModel: NSObject, ObservableObject {
                 guard let self = self else { return }
                 self.session.beginConfiguration()
 
-                // Ensure the back camera is available
-                guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                let preferredPosition: AVCaptureDevice.Position = .front
+                let fallbackPosition: AVCaptureDevice.Position = .back
+                let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: preferredPosition)
+                    ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: fallbackPosition)
+
+                guard let videoDevice,
                       let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
-                    print("Failed to access back camera.")
+                    print("Failed to access camera.")
                     return
                 }
 
@@ -62,6 +66,9 @@ class CameraModel: NSObject, ObservableObject {
                 }
 
                 self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.currentCameraPosition = videoDevice.position
+                }
                 self.startSession()
             }
         }

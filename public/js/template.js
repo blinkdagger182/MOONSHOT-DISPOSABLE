@@ -69,7 +69,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const localShotsKey = `tetamu_guest_shots_${eventId}`;
 
   let stream = null;
-  let useFrontCamera = false;
+  let useFrontCamera = true;
   let eventData = null;
   let guestName = localStorage.getItem(localNameKey) || "";
   let imagesCache = [];

@@ -67,7 +67,7 @@ struct CameraView: View {
                         } else {
                             Text("No more photos")
                                 .foregroundColor(.red)
-                                .font(.headline)
+                                .font(.satoshi(.headline, weight: .bold))
                                 .padding()
                                 .background(Color.black.opacity(0.5))
                                 .cornerRadius(10)

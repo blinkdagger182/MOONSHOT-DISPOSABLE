@@ -95,7 +95,7 @@ struct SectionHeader: View {
     
     var body: some View {
         Text(title)
-            .font(.title2)
+            .font(.satoshi(.title2, weight: .bold))
             .fontWeight(.bold)
             .padding(.top, 20)
     }
@@ -106,7 +106,7 @@ struct Paragraph: View {
     
     var body: some View {
         Text(text)
-            .font(.body)
+            .font(.satoshi(.body))
             .lineSpacing(5)
     }
 }

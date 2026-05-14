@@ -116,12 +116,12 @@ struct GalleryView: View {
             if revealSetting == "At the end" && !hasEventEnded {
                 VStack {
                     Text("Photos will be revealed after the countdown ends")
-                        .font(.headline)
+                        .font(.satoshi(.headline, weight: .bold))
                         .foregroundColor(Color(hex: "#FFC3DC"))
                         .padding(.bottom, 10)
 
                     Text(countdownText)
-                        .font(.largeTitle)
+                        .font(.satoshi(.largeTitle, weight: .black))
                         .fontWeight(.bold)
                         .foregroundColor(Color(hex: "#FFC3DC"))
                 }
@@ -157,7 +157,7 @@ struct GalleryView: View {
 
                                 if isSelecting {
                                     Image(systemName: selectedImages.contains(image.id) ? "checkmark.circle.fill" : "circle")
-                                        .font(.title2)
+                                        .font(.satoshi(.title2, weight: .bold))
                                         .foregroundColor(selectedImages.contains(image.id) ? .green : .white)
                                         .padding(5)
                                 }
@@ -486,7 +486,7 @@ struct FullScreenImageView: View {
                         Spacer()
 
                         Text("Photo by: \(images[index].owner)")
-                            .font(.caption)
+                            .font(.satoshi(.caption))
                             .foregroundColor(.white)
                             .padding(.bottom, 20)
                     }
@@ -500,7 +500,7 @@ struct FullScreenImageView: View {
                     Button(action: { isPresented = false }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.white)
-                            .font(.system(size: 30))
+                            .font(.satoshi(size: 30))
                     }
                     .padding()
                 }

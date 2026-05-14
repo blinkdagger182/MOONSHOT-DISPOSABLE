@@ -96,7 +96,7 @@ struct CreateEventView: View {
             Spacer()
 
             Text(titleForStep(step))
-                .font(.headline.bold())
+                .font(.satoshi(.headline, weight: .bold))
                 .foregroundColor(.white)
 
             Spacer()
@@ -122,7 +122,7 @@ struct CreateEventView: View {
                 card {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Event Details")
-                            .font(.title3.bold())
+                            .font(.satoshi(.title3, weight: .bold))
                             .foregroundColor(.white)
 
                         textField(title: "Host Name", text: $hostName, placeholder: "e.g. Riz")
@@ -156,7 +156,7 @@ struct CreateEventView: View {
                 card {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Filter Style")
-                            .font(.headline)
+                            .font(.satoshi(.headline, weight: .bold))
                             .foregroundColor(.white)
 
                         Button(action: { showFilterModal = true }) {
@@ -172,7 +172,7 @@ struct CreateEventView: View {
                         }
 
                         Text("Vintage applies a warm film effect to photos taken in the event.")
-                            .font(.footnote)
+                            .font(.satoshi(.footnote))
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
@@ -191,7 +191,7 @@ struct CreateEventView: View {
                 card {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Event Settings")
-                            .font(.title3.bold())
+                            .font(.satoshi(.title3, weight: .bold))
                             .foregroundColor(.white)
 
                         stepperRow(title: "How many people", value: $guestLimit, range: 10...500)
@@ -241,7 +241,7 @@ struct CreateEventView: View {
             card {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Share your event")
-                        .font(.title3.bold())
+                        .font(.satoshi(.title3, weight: .bold))
                         .foregroundColor(.white)
                     Text("Guests can scan to join. No app required.")
                         .foregroundColor(.white.opacity(0.75))
@@ -261,7 +261,7 @@ struct CreateEventView: View {
                     }
 
                     Text("Swipe to browse styles")
-                        .font(.footnote)
+                        .font(.satoshi(.footnote))
                         .foregroundColor(.white.opacity(0.65))
                 }
             }
@@ -287,7 +287,7 @@ struct CreateEventView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Select filter style")
-                    .font(.headline)
+                    .font(.satoshi(.headline, weight: .bold))
                     .foregroundColor(.white)
 
                 filterOption(title: "None", value: "none")
@@ -410,13 +410,13 @@ struct CreateEventView: View {
 
             let title = NSString(string: eventName)
             title.draw(in: CGRect(x: 18, y: 24, width: 254, height: 52), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 26, weight: .bold),
+                .font: UIFont.satoshi(size: 26, weight: .bold),
                 .foregroundColor: theme.accent
             ])
 
             let subtitle = NSString(string: "Scan to join")
             subtitle.draw(in: CGRect(x: 18, y: 66, width: 200, height: 24), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 15, weight: .medium),
+                .font: UIFont.satoshi(size: 15, weight: .medium),
                 .foregroundColor: UIColor.white.withAlphaComponent(0.9)
             ])
 
@@ -426,7 +426,7 @@ struct CreateEventView: View {
 
             let footer = NSString(string: "guest.tetamu.app")
             footer.draw(in: CGRect(x: 18, y: 350, width: 254, height: 30), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 16, weight: .semibold),
+                .font: UIFont.satoshi(size: 16, weight: .medium),
                 .foregroundColor: UIColor.white
             ])
         }
@@ -501,7 +501,7 @@ struct CreateEventView: View {
     private func shareButton(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.footnote.bold())
+                .font(.satoshi(.footnote, weight: .bold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -516,7 +516,7 @@ struct CreateEventView: View {
 
             VStack(spacing: 8) {
                 Text(theme.name)
-                    .font(.footnote.bold())
+                    .font(.satoshi(.footnote, weight: .bold))
                     .foregroundColor(Color(theme.accent))
                 if let image = renderQRCard(theme: theme) {
                     Image(uiImage: image)

@@ -31,7 +31,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            let contentView = ContentView(eventId: eventId) // Pass the extracted eventId
+            let contentView = BrowserClipExperience(eventId: eventId)
 
             window.rootViewController = UIHostingController(rootView: contentView)
             self.window = window
@@ -63,7 +63,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             DispatchQueue.main.async {
                 if let window = self.window {
-                    let contentView = ContentView(eventId: eventId)
+                    let contentView = BrowserClipExperience(eventId: eventId)
                     window.rootViewController = UIHostingController(rootView: contentView)
                     window.makeKeyAndVisible()
                 }

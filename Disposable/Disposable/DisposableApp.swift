@@ -51,6 +51,7 @@ struct DisposableApp: App {
                             Text("Settings")
                         }
                 }
+                .font(.satoshi(.body))
             }
             .onOpenURL { url in
                 if let eventId = extractEventId(from: url), !isInEvent {

@@ -7,7 +7,7 @@ final class ClipCameraController: NSObject, ObservableObject {
     private var currentInput: AVCaptureDeviceInput?
 
     @Published var torchEnabled = false
-    @Published var usingFrontCamera = false
+    @Published var usingFrontCamera = true
 
     var onPhotoCapture: ((UIImage) -> Void)?
 
@@ -20,11 +20,15 @@ final class ClipCameraController: NSObject, ObservableObject {
         session.beginConfiguration()
         session.sessionPreset = .photo
 
-        if let back = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-           let input = try? AVCaptureDeviceInput(device: back),
+        let preferredDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+
+        if let preferredDevice,
+           let input = try? AVCaptureDeviceInput(device: preferredDevice),
            session.canAddInput(input) {
             session.addInput(input)
             currentInput = input
+            usingFrontCamera = preferredDevice.position == .front
         }
 
         if session.canAddOutput(photoOutput) {

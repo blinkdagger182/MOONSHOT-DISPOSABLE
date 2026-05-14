@@ -31,23 +31,23 @@ struct ContactFormView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Contact Form")
-                    .font(.largeTitle)
+                    .font(.satoshi(.largeTitle, weight: .black))
                     .fontWeight(.bold)
                 
                 Group {
                     Text("Name")
-                        .font(.headline)
+                        .font(.satoshi(.headline, weight: .bold))
                     TextField("Your name", text: $name)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     
                     Text("Email")
-                        .font(.headline)
+                        .font(.satoshi(.headline, weight: .bold))
                     TextField("Your email", text: $email)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.emailAddress)
                     
                     Text("Message")
-                        .font(.headline)
+                        .font(.satoshi(.headline, weight: .bold))
                     TextEditor(text: $message)
                         .frame(height: 100)
                         .border(Color.gray, width: 1)
@@ -55,7 +55,7 @@ struct ContactFormView: View {
                 }
                 
                 Text("Subjects")
-                    .font(.headline)
+                    .font(.satoshi(.headline, weight: .bold))
                 
                 VStack(alignment: .leading) {
                     ForEach(subjects, id: \.self) { subject in
@@ -85,7 +85,7 @@ struct ContactFormView: View {
                         + Text(" and ")
                         + Text("[Terms & Conditions](https://sites.google.com/view/disposable-app/accueil)").foregroundColor(.blue)
                     }
-                    .font(.footnote)
+                    .font(.satoshi(.footnote))
                 }
                 .padding(.top)
                 
@@ -95,7 +95,7 @@ struct ContactFormView: View {
                         ProgressView()
                     } else {
                         Text("Submit")
-                            .font(.headline)
+                            .font(.satoshi(.headline, weight: .bold))
                             .foregroundColor(.white)
                             .padding()
                             .frame(maxWidth: .infinity)

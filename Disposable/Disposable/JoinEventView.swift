@@ -26,7 +26,7 @@ struct JoinEventView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Join an Event")
-                .font(.title)
+                .font(.satoshi(.title, weight: .bold))
                 .fontWeight(.bold)
 
             if !eventExists && initialEventId == nil {
@@ -59,7 +59,7 @@ struct JoinEventView: View {
                 Toggle(isOn: $hasAcceptedTerms) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("I agree to the")
-                            .font(.subheadline)
+                            .font(.satoshi(.subheadline))
                             .foregroundColor(.gray)
                         HStack {
                             NavigationLink(destination: PrivacyPolicyView()) {
@@ -68,7 +68,7 @@ struct JoinEventView: View {
                                     .foregroundColor(.blue)
                             }
                             Text("and")
-                                .font(.subheadline)
+                                .font(.satoshi(.subheadline))
                                 .foregroundColor(.gray)
                             NavigationLink(destination: TermsAndConditionsView()) {
                                 Text("Terms and Conditions")

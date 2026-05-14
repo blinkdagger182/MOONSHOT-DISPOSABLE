@@ -38,10 +38,19 @@ struct HomeView: View {
     @State private var showEventDeletedAlert = false
     @State private var navigateToJoinFromQR = false
     @State private var showPreRevealSheet = false
+    @State private var selectedHomeModal: HomeDashboardModal?
 
     @State private var eventEndTime: Date = Date()
     @State private var revealSetting: String = "Immediately"
     @State private var phoneShowingBack = false
+    @State private var hasInitializedDashboardControls = false
+    @State private var selectedGuestLimit = 10
+    @State private var selectedPhotosPerPerson = 15
+    @State private var selectedRevealOption = "After"
+    @State private var selectedFilterOption = "Disposable film"
+    @State private var selectedShareTemplate: QRShareTemplateStyle = .plain
+    @State private var selectedShareBackground: QRShareBackground = .warm
+    @State private var selectedShareQRColor: QRShareColor = .black
 
     var body: some View {
         NavigationStack {
@@ -71,6 +80,8 @@ struct HomeView: View {
             }
             .onAppear {
                 restoreEventState()
+                phoneShowingBack = false
+                initializeDashboardControlsIfNeeded()
 
                 if isInEvent {
                     fetchParticipantsCount()
@@ -102,6 +113,13 @@ struct HomeView: View {
                     voiceNotesEnabled: eventData?["allowVoiceNotes"] as? Bool ?? true
                 )
             }
+            .sheet(item: $selectedHomeModal) { modal in
+                homeModalView(for: modal)
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(28)
+                    .presentationBackground(Color.clear)
+                    .presentationDetents(detents(for: modal))
+            }
             .alert("Event Deleted", isPresented: $showEventDeletedAlert) {
                 Button("OK") { leaveEvent() }
             } message: {
@@ -115,7 +133,7 @@ struct HomeView: View {
     private func eventHeader(_ data: [String: Any]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(data["eventName"] as? String ?? "Event Name")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.satoshi(size: 30, weight: .bold))
                 .foregroundColor(.white)
 
             HStack {
@@ -123,12 +141,12 @@ struct HomeView: View {
                 Spacer()
                 Label("\(participantsCount)", systemImage: "person.2.fill")
             }
-            .font(.subheadline.weight(.medium))
+            .font(.satoshi(.subheadline, weight: .medium))
             .foregroundColor(.white.opacity(0.8))
 
             if let location = data["location"] as? String, !location.isEmpty {
                 Label(location, systemImage: "mappin.and.ellipse")
-                    .font(.footnote)
+                    .font(.satoshi(.footnote))
                     .foregroundColor(.white.opacity(0.72))
             }
         }
@@ -143,11 +161,11 @@ struct HomeView: View {
             if revealSetting == "At the end" {
                 VStack(spacing: 8) {
                     Text("Reveal in")
-                        .font(.footnote.weight(.semibold))
+                        .font(.satoshi(.footnote, weight: .medium))
                         .foregroundColor(.white.opacity(0.75))
 
                     Text(countdownText == "00:00:00" ? "Photos are revealed" : countdownText)
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.satoshi(size: 30, weight: .bold))
                         .foregroundColor(Color(hex: "#F6DEC0"))
                 }
                 .frame(maxWidth: .infinity)
@@ -180,11 +198,11 @@ struct HomeView: View {
     private func preRevealCard(_ data: [String: Any]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Pre-Reveal Overview")
-                .font(.headline)
+                .font(.satoshi(.headline, weight: .bold))
                 .foregroundColor(.white)
 
             Text("Track guests, captures, and voice notes before reveal.")
-                .font(.subheadline)
+                .font(.satoshi(.subheadline))
                 .foregroundColor(.white.opacity(0.74))
 
             HStack {
@@ -205,10 +223,10 @@ struct HomeView: View {
     private func statPill(label: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.headline.bold())
+                .font(.satoshi(.headline, weight: .bold))
                 .foregroundColor(.white)
             Text(label)
-                .font(.caption2)
+                .font(.satoshi(.caption2))
                 .foregroundColor(.white.opacity(0.72))
         }
         .frame(maxWidth: .infinity)
@@ -242,18 +260,18 @@ struct HomeView: View {
             subtitle: subtitle(for: data),
             statusText: countdownText.isEmpty ? "Guests are capturing memories" : "Reveal in \(countdownText)",
             phoneShowingBack: $phoneShowingBack,
-            createDestination: CreateEventView(isInEvent: $isInEvent, eventData: $eventData),
-            joinDestination: JoinEventView(isInEvent: $isInEvent, eventData: $eventData),
-            galleryAction: { showPreRevealSheet = true },
-            cameraAction: shareQRCode,
-            editAction: { showPreRevealSheet = true },
-            qrAction: shareQRCode,
-            shareAction: shareEventWebsite
+            scheduleAction: { selectedHomeModal = .details },
+            instantAction: { selectedHomeModal = .details },
+            galleryAction: { selectedHomeModal = .details },
+            cameraAction: { selectedHomeModal = .details },
+            editAction: { selectedHomeModal = .details },
+            qrAction: { selectedHomeModal = .share },
+            shareAction: { selectedHomeModal = .share }
         )
         .overlay(alignment: .topTrailing) {
             Button(action: { showEndEventAlert = true }) {
                 Image(systemName: "xmark")
-                    .font(.headline.weight(.bold))
+                    .font(.satoshi(.headline, weight: .bold))
                     .foregroundStyle(.white.opacity(0.82))
                     .frame(width: 34, height: 34)
                     .background(Color.black.opacity(0.24), in: Circle())
@@ -275,14 +293,137 @@ struct HomeView: View {
             subtitle: "Share with friends!",
             statusText: "Ended 3 months ago",
             phoneShowingBack: $phoneShowingBack,
-            createDestination: CreateEventView(isInEvent: $isInEvent, eventData: $eventData),
-            joinDestination: JoinEventView(isInEvent: $isInEvent, eventData: $eventData),
-            galleryAction: {},
-            cameraAction: {},
-            editAction: {},
-            qrAction: {},
-            shareAction: {}
+            scheduleAction: { selectedHomeModal = .details },
+            instantAction: { selectedHomeModal = .details },
+            galleryAction: { selectedHomeModal = .details },
+            cameraAction: { selectedHomeModal = .details },
+            editAction: { selectedHomeModal = .details },
+            qrAction: { selectedHomeModal = .share },
+            shareAction: { selectedHomeModal = .share }
         )
+    }
+
+    @ViewBuilder
+    private func homeModalView(for modal: HomeDashboardModal) -> some View {
+        let summary = dashboardSummary()
+
+        switch modal {
+        case .details:
+            HomeEventDetailsSheet(summary: summary) { selection in
+                selectedHomeModal = selection
+            } dismissAction: {
+                selectedHomeModal = nil
+            }
+        case .guests:
+            GuestLimitSheet(
+                summary: summary,
+                selectedLimit: $selectedGuestLimit,
+                backAction: { selectedHomeModal = .details }
+            )
+        case .ended:
+            EventEndSheet(summary: summary, backAction: { selectedHomeModal = .details })
+        case .reveal:
+            RevealPhotosSheet(
+                summary: summary,
+                selectedReveal: $selectedRevealOption,
+                backAction: { selectedHomeModal = .details }
+            )
+        case .filter:
+            FilterSelectionSheet(
+                summary: summary,
+                selectedFilter: $selectedFilterOption,
+                backAction: { selectedHomeModal = .details }
+            )
+        case .photos:
+            PhotosPerPersonSheet(
+                summary: summary,
+                selectedPhotos: $selectedPhotosPerPerson,
+                backAction: { selectedHomeModal = .details }
+            )
+        case .share:
+            ShareEventCardSheet(
+                summary: summary,
+                qrCodeImage: qrCodeImage,
+                selectedTemplate: $selectedShareTemplate,
+                selectedBackground: $selectedShareBackground,
+                selectedQRColor: $selectedShareQRColor,
+                shareAction: shareSelectedQRCodeTemplate
+            )
+        }
+    }
+
+    private func detents(for modal: HomeDashboardModal) -> Set<PresentationDetent> {
+        switch modal {
+        case .details:
+            return [.fraction(0.58), .large]
+        case .share:
+            return [.large]
+        case .ended:
+            return [.fraction(0.72), .large]
+        default:
+            return [.fraction(0.5), .medium]
+        }
+    }
+
+    private func dashboardSummary() -> HomeEventSummary {
+        let data = eventData ?? [:]
+        let eventName = data["eventName"] as? String ?? "February 4 POV"
+        let endDate = endDateText(from: data)
+
+        return HomeEventSummary(
+            eventName: eventName,
+            guestLimit: selectedGuestLimit,
+            photosPerPerson: selectedPhotosPerPerson,
+            reveal: selectedRevealOption,
+            filter: selectedFilterOption,
+            endedText: endDate
+        )
+    }
+
+    private func initializeDashboardControlsIfNeeded() {
+        guard !hasInitializedDashboardControls else { return }
+        let data = eventData ?? [:]
+        selectedPhotosPerPerson = data["numberOfPhotos"] as? Int ?? 15
+        selectedGuestLimit = data["guestLimit"] as? Int ?? max(participantsCount, 10)
+        selectedRevealOption = revealTitle(from: data["reveal"] as? String)
+        selectedFilterOption = filterTitle(from: data["filterStyle"] as? String)
+        hasInitializedDashboardControls = true
+    }
+
+    private func filterTitle(from value: String?) -> String {
+        switch value {
+        case "vintage":
+            return "Disposable film"
+        case "none":
+            return "None"
+        default:
+            return "Disposable film"
+        }
+    }
+
+    private func revealTitle(from value: String?) -> String {
+        switch value {
+        case "Immediately":
+            return "During"
+        case "At the end":
+            return "After"
+        default:
+            return "After"
+        }
+    }
+
+    private func endDateText(from data: [String: Any]) -> String {
+        guard let duration = data["duration"] as? Int,
+              let startTime = data["startTime"] as? Timestamp else {
+            return "Mon, Oct 23 • 2:00am GMT+1"
+        }
+
+        let endDate = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d • h:mma"
+        formatter.amSymbol = "am"
+        formatter.pmSymbol = "pm"
+        return "\(formatter.string(from: endDate)) GMT+8"
     }
 
     private func subtitle(for data: [String: Any]) -> String {
@@ -387,6 +528,33 @@ struct HomeView: View {
         }
     }
 
+    private func shareSelectedQRCodeTemplate() {
+        let summary = dashboardSummary()
+        let content = QRShareTemplateCard(
+            summary: summary,
+            qrCodeImage: qrCodeImage,
+            template: selectedShareTemplate,
+            background: selectedShareBackground,
+            qrColor: selectedShareQRColor,
+            displayMode: .export
+        )
+        .frame(width: 1080, height: 1620)
+
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 1
+
+        guard let renderedImage = renderer.uiImage else {
+            shareQRCode()
+            return
+        }
+
+        let activityVC = UIActivityViewController(activityItems: [renderedImage], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            rootViewController.present(activityVC, animated: true)
+        }
+    }
+
     private func generateQRCode() {
         guard let eventId = eventData?["eventId"] as? String else { return }
 
@@ -468,13 +636,1156 @@ struct HomeView: View {
     }
 }
 
-private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View>: View {
+private enum HomeDashboardModal: Identifiable {
+    case details
+    case guests
+    case ended
+    case reveal
+    case filter
+    case photos
+    case share
+
+    var id: String {
+        switch self {
+        case .details: return "details"
+        case .guests: return "guests"
+        case .ended: return "ended"
+        case .reveal: return "reveal"
+        case .filter: return "filter"
+        case .photos: return "photos"
+        case .share: return "share"
+        }
+    }
+}
+
+private struct HomeEventSummary {
+    let eventName: String
+    let guestLimit: Int
+    let photosPerPerson: Int
+    let reveal: String
+    let filter: String
+    let endedText: String
+}
+
+private enum QRShareTemplateStyle: String, CaseIterable, Identifiable {
+    case plain
+    case sparkles
+    case midnight
+    case garden
+    case ticket
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .plain: return "Plain QR Code"
+        case .sparkles: return "Sparkles"
+        case .midnight: return "Midnight"
+        case .garden: return "Garden Party"
+        case .ticket: return "Ticket Stub"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .plain: return "Clean and fast to scan"
+        case .sparkles: return "Elegant event invite"
+        case .midnight: return "Bold dark poster"
+        case .garden: return "Soft floral card"
+        case .ticket: return "Keepsake pass"
+        }
+    }
+}
+
+private enum QRShareBackground: String, CaseIterable, Identifiable {
+    case warm
+    case cream
+    case charcoal
+    case blush
+    case ocean
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .warm: return "Warm"
+        case .cream: return "Cream"
+        case .charcoal: return "Charcoal"
+        case .blush: return "Blush"
+        case .ocean: return "Ocean"
+        }
+    }
+
+    var colors: [Color] {
+        switch self {
+        case .warm: return [Color(hex: "#6B5B52"), Color(hex: "#332C3F"), Color(hex: "#171822")]
+        case .cream: return [Color(hex: "#FFF8ED"), Color(hex: "#EBD7B8"), Color(hex: "#C7A982")]
+        case .charcoal: return [Color(hex: "#161923"), Color(hex: "#080A10"), Color(hex: "#1F2230")]
+        case .blush: return [Color(hex: "#FFDCE7"), Color(hex: "#DDB6A1"), Color(hex: "#826A72")]
+        case .ocean: return [Color(hex: "#DDF7FF"), Color(hex: "#7EA8B8"), Color(hex: "#1C3B4A")]
+        }
+    }
+}
+
+private enum QRShareColor: String, CaseIterable, Identifiable {
+    case black
+    case violet
+    case espresso
+    case forest
+    case ivory
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .black: return "Black"
+        case .violet: return "Violet"
+        case .espresso: return "Espresso"
+        case .forest: return "Forest"
+        case .ivory: return "Ivory"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .black: return .black
+        case .violet: return Color(hex: "#554DE8")
+        case .espresso: return Color(hex: "#2C1E18")
+        case .forest: return Color(hex: "#183E34")
+        case .ivory: return Color(hex: "#FFF8ED")
+        }
+    }
+}
+
+private enum QRShareDisplayMode {
+    case preview
+    case export
+}
+
+private struct HomeEventDetailsSheet: View {
+    let summary: HomeEventSummary
+    let selectAction: (HomeDashboardModal) -> Void
+    let dismissAction: () -> Void
+
+    var body: some View {
+        HomeSheetContainer {
+            VStack(spacing: 22) {
+                HStack {
+                    Button(action: dismissAction) {
+                        Image(systemName: "chevron.down")
+                            .font(.satoshi(.title3, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.08), in: Circle())
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 10) {
+                        Text(summary.eventName)
+                            .font(.satoshi(size: 27, weight: .black))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        Image(systemName: "pencil")
+                            .font(.satoshi(.headline, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .frame(width: 46, height: 34)
+                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "ellipsis")
+                        .font(.satoshi(.title3, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(width: 44, height: 44)
+                }
+
+                VStack(spacing: 0) {
+                    HomeSettingRow(icon: "person.2", title: "Number of Guests", value: "Up to \(summary.guestLimit) participants") {
+                        selectAction(.guests)
+                    }
+                    HomeDivider()
+                    HomeSettingRow(icon: "calendar", title: "Ended", value: summary.endedText) {
+                        selectAction(.ended)
+                    }
+                    HomeDivider()
+                    HomeSettingRow(icon: "hourglass", title: "Reveal Photos", value: summary.reveal) {
+                        selectAction(.reveal)
+                    }
+                    HomeDivider()
+                    HomeSettingRow(icon: "photo", title: "Filter", value: summary.filter) {
+                        selectAction(.filter)
+                    }
+                    HomeDivider()
+                    HomeSettingRow(icon: "camera", title: "Photos per Person", value: "\(summary.photosPerPerson) photos") {
+                        selectAction(.photos)
+                    }
+                }
+
+                Text("All photos will be available in the gallery")
+                    .font(.satoshi(.subheadline, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.44))
+                    .padding(.top, 4)
+
+                Button(action: dismissAction) {
+                    Text("Dismiss")
+                        .font(.satoshi(.title3, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 62)
+                        .background(Color(hex: "#574BE7"), in: RoundedRectangle(cornerRadius: 15))
+                }
+            }
+        }
+    }
+}
+
+private struct GuestLimitSheet: View {
+    let summary: HomeEventSummary
+    @Binding var selectedLimit: Int
+    let backAction: () -> Void
+
+    private let guestLevels = [10, 25, 50, 75, 100, 150, 250]
+
+    private var filledSegments: Int {
+        (guestLevels.firstIndex(of: selectedLimit) ?? 0) + 1
+    }
+
+    var body: some View {
+        HomeExpandedSheet(
+            icon: "person.2",
+            title: "Number of Guests",
+            value: "Up to \(selectedLimit) participants",
+            description: "Pricing scales for more guests. Upgrade at any time, even after publishing. Guests can participate without downloading the app by scanning a QR code or opening a link.",
+            backAction: backAction
+        ) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 3) {
+                    ForEach(Array(guestLevels.enumerated()), id: \.element) { index, level in
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                selectedLimit = level
+                            }
+                        } label: {
+                            RoundedRectangle(cornerRadius: index == 0 || index == guestLevels.count - 1 ? 10 : 2)
+                                .fill(index < filledSegments ? Color(hex: "#574BE7") : Color.white.opacity(0.11))
+                                .frame(height: 58)
+                                .overlay(alignment: .bottom) {
+                                    if selectedLimit == level {
+                                        Circle()
+                                            .fill(.white)
+                                            .frame(width: 8, height: 8)
+                                            .padding(.bottom, 8)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(guestLevels, id: \.self) { level in
+                        SelectableButtonPill(
+                            title: "\(level)",
+                            subtitle: level == 10 ? "Current" : (level <= 25 ? "$5" : "Upgrade"),
+                            selected: selectedLimit == level
+                        ) {
+                            selectedLimit = level
+                        }
+                    }
+                }
+
+                HStack {
+                    Text("Up to \(selectedLimit) guests")
+                        .font(.satoshi(.title3, weight: .bold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text(selectedLimit <= 10 ? "Current Level" : "$5 Upgrade")
+                        .font(.satoshi(.title3, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.48))
+                }
+            }
+        }
+    }
+}
+
+private struct RevealPhotosSheet: View {
+    let summary: HomeEventSummary
+    @Binding var selectedReveal: String
+    let backAction: () -> Void
+
+    private let options = ["During", "After", "12 hours after", "24 hours after"]
+
+    var body: some View {
+        HomeExpandedSheet(
+            icon: "hourglass",
+            title: "Reveal Photos",
+            value: selectedReveal,
+            description: "Adjust the waiting period for when the photos are revealed in the gallery after the end date.",
+            backAction: backAction
+        ) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        selectedReveal = option
+                    } label: {
+                        SelectablePill(option, selected: selectedReveal == option)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+private struct EventEndSheet: View {
+    let summary: HomeEventSummary
+    let backAction: () -> Void
+
+    var body: some View {
+        HomeExpandedSheet(
+            icon: "calendar",
+            title: "Ended",
+            value: summary.endedText,
+            description: "Customize when the camera will lock and submissions will no longer be allowed.",
+            backAction: backAction
+        ) {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 12) {
+                    SelectablePill("When I decide", selected: false)
+                    SelectablePill("Choose a date", selected: true)
+                }
+
+                HStack {
+                    Text("October 2023")
+                        .font(.satoshi(.title2, weight: .black))
+                        .foregroundStyle(.white)
+                    Image(systemName: "chevron.right")
+                        .font(.satoshi(.title3, weight: .bold))
+                        .foregroundStyle(Color(hex: "#8E84FF"))
+                    Spacer()
+                    Image(systemName: "chevron.left")
+                    Image(systemName: "chevron.right")
+                }
+                .font(.satoshi(.title2, weight: .bold))
+                .foregroundStyle(Color(hex: "#8E84FF"))
+
+                CalendarMockup()
+
+                HStack {
+                    Text("Time")
+                        .font(.satoshi(.title2, weight: .black))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("2:00 AM")
+                        .font(.satoshi(.title2, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(height: 54)
+                        .background(Color.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 11))
+                }
+            }
+        }
+    }
+}
+
+private struct FilterSelectionSheet: View {
+    let summary: HomeEventSummary
+    @Binding var selectedFilter: String
+    let backAction: () -> Void
+
+    var body: some View {
+        HomeExpandedSheet(
+            icon: "photo",
+            title: "Filter",
+            value: selectedFilter,
+            description: "Adjust the look and style of each photo taken at the event. You can adjust this even after the event.",
+            backAction: backAction
+        ) {
+            HStack(spacing: 14) {
+                Button {
+                    selectedFilter = "None"
+                } label: {
+                    FilterCard(title: "None", selected: selectedFilter == "None", warm: false)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    selectedFilter = "Disposable film"
+                } label: {
+                    FilterCard(title: "Disposable Film", selected: selectedFilter != "None", warm: true)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct PhotosPerPersonSheet: View {
+    let summary: HomeEventSummary
+    @Binding var selectedPhotos: Int
+    let backAction: () -> Void
+
+    private let photoOptions = [5, 10, 15, 20, 25]
+
+    var body: some View {
+        HomeExpandedSheet(
+            icon: "camera",
+            title: "Photos per Person",
+            value: "\(selectedPhotos) photos",
+            description: "Set how many photos each guest can capture during the event.",
+            backAction: backAction
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 3) {
+                    ForEach(Array(photoOptions.enumerated()), id: \.element) { index, amount in
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                selectedPhotos = amount
+                            }
+                        } label: {
+                            RoundedRectangle(cornerRadius: index == 0 || index == photoOptions.count - 1 ? 10 : 2)
+                                .fill(index <= (photoOptions.firstIndex(of: selectedPhotos) ?? 0) ? Color(hex: "#574BE7") : Color.white.opacity(0.11))
+                                .frame(height: 58)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(photoOptions, id: \.self) { amount in
+                        SelectableButtonPill(
+                            title: "\(amount)",
+                            subtitle: "photos",
+                            selected: selectedPhotos == amount
+                        ) {
+                            selectedPhotos = amount
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ShareEventCardSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let summary: HomeEventSummary
+    let qrCodeImage: UIImage?
+    @Binding var selectedTemplate: QRShareTemplateStyle
+    @Binding var selectedBackground: QRShareBackground
+    @Binding var selectedQRColor: QRShareColor
+    let shareAction: () -> Void
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: selectedBackground.colors,
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.satoshi(.title, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                    VStack(spacing: 2) {
+                        Text(selectedTemplate.title)
+                            .font(.satoshi(.title3, weight: .black))
+                            .foregroundStyle(.white)
+                        Text("Swipe to change style")
+                            .font(.satoshi(.headline, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.55))
+                    }
+                    Spacer()
+                    Image(systemName: "lightbulb")
+                        .font(.satoshi(.title3, weight: .medium))
+                        .foregroundStyle(Color(hex: "#FFD324"))
+                        .frame(width: 58, height: 58)
+                        .background(Color.white.opacity(0.13), in: Circle())
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+
+                Rectangle()
+                    .fill(.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.horizontal, 18)
+
+                Spacer(minLength: 8)
+
+                TabView(selection: $selectedTemplate) {
+                    ForEach(QRShareTemplateStyle.allCases) { template in
+                        QRShareTemplateCard(
+                            summary: summary,
+                            qrCodeImage: qrCodeImage,
+                            template: template,
+                            background: selectedBackground,
+                            qrColor: selectedQRColor,
+                            displayMode: .preview
+                        )
+                        .padding(.horizontal, 38)
+                        .tag(template)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .automatic))
+                .frame(height: 430)
+
+                Spacer(minLength: 14)
+
+                HStack(spacing: 12) {
+                    Menu {
+                        ForEach(QRShareBackground.allCases) { background in
+                            Button(background.title) {
+                                selectedBackground = background
+                            }
+                        }
+                    } label: {
+                        ShareOptionButton(icon: "rectangle.portrait", title: selectedBackground.title)
+                    }
+
+                    Menu {
+                        ForEach(QRShareColor.allCases) { color in
+                            Button(color.title) {
+                                selectedQRColor = color
+                            }
+                        }
+                    } label: {
+                        ShareOptionButton(icon: "circle.fill", title: selectedQRColor.title)
+                    }
+                }
+                .padding(.horizontal, 18)
+
+                Button(action: shareAction) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Share")
+                    }
+                    .font(.satoshi(.title3, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 66)
+                    .background(Color(hex: "#574BE7"), in: RoundedRectangle(cornerRadius: 15))
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
+            }
+        }
+    }
+}
+
+private struct QRShareTemplateCard: View {
+    let summary: HomeEventSummary
+    let qrCodeImage: UIImage?
+    let template: QRShareTemplateStyle
+    let background: QRShareBackground
+    let qrColor: QRShareColor
+    let displayMode: QRShareDisplayMode
+
+    private var isExport: Bool {
+        displayMode == .export
+    }
+
+    var body: some View {
+        ZStack {
+            cardBackground
+            decorativeLayer
+
+            VStack(spacing: isExport ? 42 : 18) {
+                header
+                qrBlock
+                copyBlock
+                Spacer(minLength: isExport ? 22 : 10)
+                footer
+            }
+            .padding(isExport ? 78 : 28)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: isExport ? 0 : 26))
+        .overlay {
+            if !isExport {
+                RoundedRectangle(cornerRadius: 26)
+                    .stroke(Color.white.opacity(0.22), lineWidth: 1)
+            }
+        }
+        .shadow(color: .black.opacity(isExport ? 0 : 0.28), radius: 28, y: 18)
+    }
+
+    @ViewBuilder
+    private var cardBackground: some View {
+        switch template {
+        case .plain:
+            Color.white
+        case .sparkles:
+            LinearGradient(colors: [Color.white, Color(hex: "#FFF7EA")], startPoint: .top, endPoint: .bottom)
+        case .midnight:
+            LinearGradient(colors: [Color(hex: "#11142A"), Color(hex: "#05070D")], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .garden:
+            LinearGradient(colors: [Color(hex: "#F7FFE9"), Color(hex: "#E4F0D0")], startPoint: .top, endPoint: .bottom)
+        case .ticket:
+            LinearGradient(colors: [Color(hex: "#FFF5DF"), Color(hex: "#E9CF9E")], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
+    @ViewBuilder
+    private var decorativeLayer: some View {
+        switch template {
+        case .plain:
+            EmptyView()
+        case .sparkles:
+            SparklePattern()
+                .foregroundStyle(Color(hex: "#C9A46E").opacity(0.72))
+                .padding(isExport ? 80 : 24)
+        case .midnight:
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#554DE8").opacity(0.34))
+                    .blur(radius: isExport ? 90 : 36)
+                    .offset(x: isExport ? -280 : -95, y: isExport ? -430 : -138)
+                Circle()
+                    .fill(Color(hex: "#E8D7FF").opacity(0.22))
+                    .blur(radius: isExport ? 110 : 46)
+                    .offset(x: isExport ? 330 : 110, y: isExport ? 430 : 142)
+            }
+        case .garden:
+            GardenPattern()
+                .foregroundStyle(Color(hex: "#73946D").opacity(0.36))
+                .padding(isExport ? 72 : 24)
+        case .ticket:
+            TicketPerforation()
+                .stroke(Color(hex: "#8D6B38").opacity(0.35), style: StrokeStyle(lineWidth: isExport ? 8 : 2, dash: [10, 10]))
+                .padding(.vertical, isExport ? 90 : 30)
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: isExport ? 14 : 5) {
+            Text(summary.eventName.uppercased())
+                .font(.satoshi(size: isExport ? 92 : 30, weight: .regular))
+                .tracking(isExport ? 10 : 3)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(foreground)
+                .minimumScaleFactor(0.58)
+                .lineLimit(2)
+
+            Text(template.subtitle)
+                .font(.satoshi(size: isExport ? 36 : 13, weight: .medium))
+                .foregroundStyle(foreground.opacity(0.55))
+        }
+    }
+
+    private var qrBlock: some View {
+        qrContent
+            .frame(width: isExport ? 430 : 142, height: isExport ? 430 : 142)
+            .padding(isExport ? 32 : 12)
+            .background(qrPlate, in: RoundedRectangle(cornerRadius: isExport ? 42 : 15))
+            .overlay(
+                RoundedRectangle(cornerRadius: isExport ? 42 : 15)
+                    .stroke(foreground.opacity(0.1), lineWidth: isExport ? 4 : 1)
+            )
+    }
+
+    private var copyBlock: some View {
+        VStack(spacing: isExport ? 16 : 6) {
+            Text("We want your perspective from the night.")
+                .font(.satoshi(size: isExport ? 36 : 13, weight: .bold))
+                .foregroundStyle(foreground.opacity(0.82))
+            Text("Scan the QR code and share photos. No app download required.")
+                .font(.satoshi(size: isExport ? 31 : 11, weight: .medium))
+                .foregroundStyle(foreground.opacity(0.6))
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            HStack(spacing: isExport ? 14 : 5) {
+                RoundedRectangle(cornerRadius: isExport ? 7 : 3)
+                    .fill(template == .midnight ? Color.white : Color.black)
+                    .frame(width: isExport ? 34 : 13, height: isExport ? 34 : 13)
+                Text("pov")
+                    .font(.satoshi(size: isExport ? 38 : 15, weight: .black))
+            }
+            Spacer()
+            Text("February 10, 2024")
+                .font(.satoshi(size: isExport ? 32 : 12, weight: .italic))
+        }
+        .foregroundStyle(foreground)
+    }
+
+    @ViewBuilder
+    private var qrContent: some View {
+        if let qrCodeImage {
+            Image(uiImage: qrCodeImage.withRenderingMode(.alwaysTemplate))
+                .resizable()
+                .interpolation(.none)
+                .scaledToFit()
+                .foregroundStyle(qrColor.color)
+        } else {
+            Image(systemName: "qrcode")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(qrColor.color)
+                .padding(isExport ? 26 : 8)
+        }
+    }
+
+    private var foreground: Color {
+        template == .midnight ? .white : Color(hex: "#17140F")
+    }
+
+    private var qrPlate: Color {
+        qrColor == .ivory ? Color(hex: "#151722") : .white
+    }
+}
+
+private struct SparklePattern: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let points: [(CGFloat, CGFloat, CGFloat)] = [
+                (0.18, 0.14, 0.8), (0.72, 0.12, 0.55), (0.86, 0.28, 0.75),
+                (0.22, 0.36, 0.48), (0.66, 0.42, 0.62), (0.14, 0.64, 0.72),
+                (0.78, 0.68, 0.46), (0.32, 0.82, 0.62), (0.58, 0.9, 0.52)
+            ]
+
+            ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                SparkleShape()
+                    .frame(width: 18 * point.2, height: 18 * point.2)
+                    .position(x: proxy.size.width * point.0, y: proxy.size.height * point.1)
+            }
+        }
+    }
+}
+
+private struct SparkleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        path.move(to: CGPoint(x: center.x, y: rect.minY))
+        path.addLine(to: CGPoint(x: center.x + rect.width * 0.12, y: center.y - rect.height * 0.12))
+        path.addLine(to: CGPoint(x: rect.maxX, y: center.y))
+        path.addLine(to: CGPoint(x: center.x + rect.width * 0.12, y: center.y + rect.height * 0.12))
+        path.addLine(to: CGPoint(x: center.x, y: rect.maxY))
+        path.addLine(to: CGPoint(x: center.x - rect.width * 0.12, y: center.y + rect.height * 0.12))
+        path.addLine(to: CGPoint(x: rect.minX, y: center.y))
+        path.addLine(to: CGPoint(x: center.x - rect.width * 0.12, y: center.y - rect.height * 0.12))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct GardenPattern: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ForEach(0..<9, id: \.self) { index in
+                let x = CGFloat((index * 37) % 91) / 100
+                let y = CGFloat((index * 23 + 12) % 89) / 100
+                Image(systemName: index.isMultiple(of: 2) ? "leaf.fill" : "camera.macro")
+                    .font(.system(size: 22 + CGFloat(index % 3) * 6))
+                    .rotationEffect(.degrees(Double(index * 31)))
+                    .position(x: proxy.size.width * x, y: proxy.size.height * y)
+            }
+        }
+    }
+}
+
+private struct TicketPerforation: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
+    }
+}
+
+private struct HomeExpandedSheet<Content: View>: View {
+    let icon: String
+    let title: String
+    let value: String
+    let description: String
+    let backAction: (() -> Void)?
+    @ViewBuilder let content: Content
+
+    init(
+        icon: String,
+        title: String,
+        value: String,
+        description: String,
+        backAction: (() -> Void)? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.icon = icon
+        self.title = title
+        self.value = value
+        self.description = description
+        self.backAction = backAction
+        self.content = content()
+    }
+
+    var body: some View {
+        HomeSheetContainer {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top, spacing: 14) {
+                    if let backAction {
+                        Button(action: backAction) {
+                            Image(systemName: "chevron.left")
+                                .font(.satoshi(.headline, weight: .black))
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(Color.white.opacity(0.08), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.satoshi(.title3, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.68))
+                            .frame(width: 42, height: 42)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.satoshi(.headline, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                        Text(value)
+                            .font(.satoshi(.title3, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(description)
+                            .font(.satoshi(.subheadline, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.42))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.satoshi(.title3, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.52))
+                        .padding(.top, 4)
+                }
+
+                HomeDivider()
+                content
+            }
+        }
+    }
+}
+
+private struct HomeSheetContainer<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+
+            ScrollView {
+                content
+                    .padding(.horizontal, 20)
+                    .padding(.top, 24)
+                    .padding(.bottom, 28)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(Color.white.opacity(0.11), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 28))
+        }
+    }
+}
+
+private struct HomeSettingRow: View {
+    let icon: String
+    let title: String
+    let value: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.satoshi(.title3, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.satoshi(.headline, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.58))
+                    Text(value)
+                        .font(.satoshi(.title3, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.satoshi(.title2, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.38))
+            }
+            .frame(height: 74)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct HomeDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(.white.opacity(0.055))
+            .frame(height: 1)
+    }
+}
+
+private struct SelectablePill: View {
+    let title: String
+    let selected: Bool
+
+    init(_ title: String, selected: Bool) {
+        self.title = title
+        self.selected = selected
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.satoshi(.headline, weight: .black))
+            .foregroundStyle(selected ? Color(hex: "#9A90FF") : .white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 62)
+            .background(selected ? Color(hex: "#282154") : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selected ? Color(hex: "#554DE8").opacity(0.7) : Color.white.opacity(0.1), lineWidth: 1)
+            )
+    }
+}
+
+private struct SelectableButtonPill: View {
+    let title: String
+    let subtitle: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.satoshi(.headline, weight: .black))
+                Text(subtitle)
+                    .font(.satoshi(.caption2, weight: .medium))
+                    .opacity(0.72)
+            }
+            .foregroundStyle(selected ? Color(hex: "#A79EFF") : .white.opacity(0.78))
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(selected ? Color(hex: "#282154") : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selected ? Color(hex: "#554DE8").opacity(0.7) : Color.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CalendarMockup: View {
+    private let weekdays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    private let days = Array(1...31)
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                ForEach(weekdays, id: \.self) { day in
+                    Text(day)
+                        .font(.satoshi(.caption, weight: .black))
+                        .foregroundStyle(.white.opacity(0.28))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 19) {
+                ForEach(0..<6, id: \.self) { _ in
+                    Color.clear.frame(height: 1)
+                }
+                ForEach(days, id: \.self) { day in
+                    Text("\(day)")
+                        .font(.satoshi(.title2, weight: .medium))
+                        .foregroundStyle(day < 23 ? .white.opacity(0.14) : .white)
+                        .frame(width: 45, height: 45)
+                        .background(day == 23 ? Color(hex: "#302C5C") : Color.clear, in: Circle())
+                        .foregroundStyle(day == 23 ? Color(hex: "#9A90FF") : .white)
+                }
+            }
+        }
+    }
+}
+
+private struct FilterCard: View {
+    let title: String
+    let selected: Bool
+    let warm: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 11)
+                .fill(
+                    LinearGradient(
+                        colors: warm ? [Color(hex: "#C48478"), Color(hex: "#2E246E")] : [Color(hex: "#6F5A58"), Color(hex: "#31343B")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay {
+                    VStack(spacing: 8) {
+                        Circle()
+                            .fill(Color.white.opacity(0.9))
+                            .frame(width: 46, height: 46)
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(0.9))
+                            .frame(width: 92, height: 78)
+                    }
+                    .opacity(0.78)
+                }
+                .frame(height: 150)
+
+            Text(title)
+                .font(.satoshi(.title3, weight: .black))
+                .foregroundStyle(selected ? Color(hex: "#9A90FF") : .white.opacity(0.58))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(selected ? Color(hex: "#282154") : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(selected ? Color(hex: "#554DE8").opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
+private struct SharePreviewCard: View {
+    let summary: HomeEventSummary
+    let qrCodeImage: UIImage?
+    let compact: Bool
+
+    var body: some View {
+        VStack(spacing: compact ? 10 : 18) {
+            if compact {
+                Spacer()
+            } else {
+                VStack(spacing: 2) {
+                    Text(summary.eventName)
+                        .font(.satoshi(size: 25))
+                        .foregroundStyle(.black)
+                        .multilineTextAlignment(.center)
+                    Text("Scan and share photos")
+                        .font(.satoshi(.caption, weight: .medium))
+                        .foregroundStyle(.black.opacity(0.42))
+                }
+                .padding(.top, 26)
+            }
+
+            qrContent
+                .frame(width: compact ? 76 : 134, height: compact ? 76 : 134)
+                .padding(8)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: compact ? 8 : 13))
+
+            if !compact {
+                Text("We want your perspective from the night -\nscan the QR code and share photos!")
+                    .font(.satoshi(.caption2, weight: .medium))
+                    .foregroundStyle(.black.opacity(0.62))
+                    .multilineTextAlignment(.center)
+
+                Spacer()
+
+                HStack {
+                    Text("pov")
+                        .font(.satoshi(.caption, weight: .black))
+                    Spacer()
+                    Text("February 10, 2024")
+                        .font(.satoshi(.caption, weight: .medium))
+                        .italic()
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 24)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    @ViewBuilder
+    private var qrContent: some View {
+        if let qrCodeImage {
+            Image(uiImage: qrCodeImage)
+                .resizable()
+                .interpolation(.none)
+                .scaledToFit()
+        } else {
+            Image(systemName: "qrcode")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.black)
+                .padding(8)
+        }
+    }
+}
+
+private struct ShareOptionButton: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+            Text(title)
+        }
+        .font(.satoshi(.headline, weight: .black))
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .frame(height: 62)
+        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.13), lineWidth: 1)
+        )
+    }
+}
+
+private struct POVDashboardLayout: View {
     let eventName: String
     let subtitle: String
     let statusText: String
     @Binding var phoneShowingBack: Bool
-    let createDestination: CreateDestination
-    let joinDestination: JoinDestination
+    let scheduleAction: () -> Void
+    let instantAction: () -> Void
     let galleryAction: () -> Void
     let cameraAction: () -> Void
     let editAction: () -> Void
@@ -509,12 +1820,12 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                         Spacer().frame(height: 18)
 
                         Text(eventName)
-                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .font(.satoshi(size: 26, weight: .black))
                             .foregroundStyle(.white)
                             .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
 
                         Text(subtitle)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.satoshi(.subheadline, weight: .medium))
                             .foregroundStyle(.white.opacity(0.55))
 
                         SwipeablePhoneMockup(
@@ -527,7 +1838,7 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                         .padding(.top, 2)
 
                         Text(statusText)
-                            .font(.footnote.weight(.medium))
+                            .font(.satoshi(.footnote, weight: .medium))
                             .foregroundStyle(.white.opacity(0.45))
 
                         HStack(spacing: 9) {
@@ -551,7 +1862,7 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                 .animation(.easeInOut(duration: 1.15), value: phoneShowingBack)
 
                 VStack(spacing: 10) {
-                    NavigationLink(destination: createDestination) {
+                    Button(action: scheduleAction) {
                         actionRow(
                             icon: "calendar.badge.plus",
                             title: "Schedule a POV Camera",
@@ -560,8 +1871,9 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                             foreground: .white
                         )
                     }
+                    .buttonStyle(.plain)
 
-                    NavigationLink(destination: joinDestination) {
+                    Button(action: instantAction) {
                         actionRow(
                             icon: "bolt.fill",
                             title: "Instant POV Camera",
@@ -570,23 +1882,29 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                             foreground: .white
                         )
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 0)
+                .padding(.horizontal, 16)
 
                 bottomBar
-                    .padding(.horizontal, 0)
+                    .padding(.horizontal, 16)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             .background(Color.black)
         }
         .background(Color.black)
         .ignoresSafeArea(edges: .top)
+        .onAppear {
+            phoneShowingBack = false
+            phoneRestingAngle = 0
+            dragOffset = 0
+        }
     }
 
     private func dashboardToolButton(systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 19, weight: .medium))
+                .font(.satoshi(size: 19, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
@@ -599,18 +1917,18 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
     private func actionRow(icon: String, title: String, subtitle: String, background: Color, foreground: Color) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.headline.weight(.bold))
+                .font(.satoshi(.headline, weight: .bold))
                 .frame(width: 24)
                 .foregroundStyle(foreground.opacity(0.72))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.headline.weight(.black))
+                    .font(.satoshi(.headline, weight: .black))
                     .foregroundStyle(foreground)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                 Text(subtitle)
-                    .font(.caption.weight(.semibold))
+                    .font(.satoshi(.caption, weight: .medium))
                     .foregroundStyle(foreground.opacity(0.62))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
@@ -619,10 +1937,10 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
             Spacer()
 
             Image(systemName: "arrow.right")
-                .font(.headline.weight(.bold))
+                .font(.satoshi(.headline, weight: .bold))
                 .foregroundStyle(foreground.opacity(0.74))
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .frame(height: 58)
         .background(background, in: RoundedRectangle(cornerRadius: 8))
     }
@@ -630,19 +1948,19 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
     private var bottomBar: some View {
         HStack(spacing: 28) {
             Image(systemName: "plus.square")
-                .font(.title3.weight(.medium))
+                .font(.satoshi(.title3, weight: .medium))
                 .foregroundStyle(Color(hex: "#8478FF"))
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
                 .background(Color(hex: "#272052"), in: RoundedRectangle(cornerRadius: 7))
 
             Image(systemName: "camera")
-                .font(.title3.weight(.medium))
+                .font(.satoshi(.title3, weight: .medium))
                 .foregroundStyle(.white.opacity(0.35))
                 .frame(maxWidth: .infinity)
 
             Image(systemName: "person")
-                .font(.title3.weight(.medium))
+                .font(.satoshi(.title3, weight: .medium))
                 .foregroundStyle(.white.opacity(0.35))
                 .frame(maxWidth: .infinity)
         }
@@ -1098,7 +2416,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                 paragraph.lineBreakMode = .byTruncatingTail
 
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont(name: "MarkerFelt-Wide", size: 35) ?? UIFont.italicSystemFont(ofSize: 35),
+                    .font: UIFont.satoshi(size: 35, weight: .italic),
                     .foregroundColor: UIColor(red: 0.12, green: 0.1, blue: 0.16, alpha: 0.86),
                     .paragraphStyle: paragraph
                 ]
@@ -1185,12 +2503,11 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
         }
 
         private func drawCameraHUD(eventName: String, in rect: CGRect) {
-            let titleFont = UIFont.systemFont(ofSize: 29, weight: .heavy)
-            let subtitleFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
-            let smallFont = UIFont.systemFont(ofSize: 15, weight: .bold)
+            let titleFont = UIFont.satoshi(size: 29, weight: .black)
+            let subtitleFont = UIFont.satoshi(size: 15, weight: .medium)
 
             UIColor.white.withAlphaComponent(0.95).setFill()
-            "3:46".draw(at: CGPoint(x: 48, y: 22), withAttributes: [.font: UIFont.monospacedDigitSystemFont(ofSize: 22, weight: .bold), .foregroundColor: UIColor.white])
+            "3:46".draw(at: CGPoint(x: 48, y: 22), withAttributes: [.font: UIFont.satoshi(size: 22, weight: .bold), .foregroundColor: UIColor.white])
             eventName.draw(
                 in: CGRect(x: 70, y: 78, width: rect.width - 140, height: 38),
                 withAttributes: [.font: titleFont, .foregroundColor: UIColor.white, .paragraphStyle: centeredParagraph()]
@@ -1216,10 +2533,10 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
 
             UIColor.black.setFill()
             UIBezierPath(rect: CGRect(x: 0, y: 842, width: rect.width, height: 78)).fill()
-            "6".draw(at: CGPoint(x: 34, y: 853), withAttributes: [.font: UIFont.systemFont(ofSize: 48, weight: .heavy), .foregroundColor: UIColor.white])
+            "6".draw(at: CGPoint(x: 34, y: 853), withAttributes: [.font: UIFont.satoshi(size: 48, weight: .black), .foregroundColor: UIColor.white])
             "SHOTS\nREMAINING".draw(
                 in: CGRect(x: 88, y: 862, width: 120, height: 52),
-                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 18), .foregroundColor: UIColor.white]
+                withAttributes: [.font: UIFont.satoshi(size: 18, weight: .italic), .foregroundColor: UIColor.white]
             )
         }
 
@@ -1227,7 +2544,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             UIColor(red: 0.14, green: 0.11, blue: 0.16, alpha: 0.68).setFill()
             UIBezierPath(roundedRect: rect, cornerRadius: 10).fill()
             text.draw(in: rect.insetBy(dx: 5, dy: 8), withAttributes: [
-                .font: UIFont.systemFont(ofSize: 19, weight: .bold),
+                .font: UIFont.satoshi(size: 19, weight: .bold),
                 .foregroundColor: UIColor.white,
                 .paragraphStyle: centeredParagraph()
             ])
@@ -1285,7 +2602,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
 
         private func textNode(_ text: String, size: CGFloat, color: UIColor, extrusion: CGFloat) -> SCNNode {
             let geometry = SCNText(string: text, extrusionDepth: extrusion)
-            geometry.font = UIFont.systemFont(ofSize: size, weight: .black)
+            geometry.font = UIFont.satoshi(size: size, weight: .black)
             geometry.flatness = 0.2
             geometry.materials = [material(color)]
             let node = SCNNode(geometry: geometry)
@@ -1320,7 +2637,7 @@ private struct HostPreRevealOverviewView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text(eventName)
-                        .font(.title.bold())
+                        .font(.satoshi(.title, weight: .bold))
                         .foregroundColor(.white)
 
                     if !location.isEmpty {
@@ -1336,7 +2653,7 @@ private struct HostPreRevealOverviewView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Before reveal")
-                            .font(.headline)
+                            .font(.satoshi(.headline, weight: .bold))
                             .foregroundColor(.white)
                         Text("Use this as your host control snapshot before memories unlock.")
                             .foregroundColor(.white.opacity(0.72))
@@ -1362,10 +2679,10 @@ private struct HostPreRevealOverviewView: View {
     private func miniCard(title: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.headline.bold())
+                .font(.satoshi(.headline, weight: .bold))
                 .foregroundColor(.white)
             Text(title)
-                .font(.caption2)
+                .font(.satoshi(.caption2))
                 .foregroundColor(.white.opacity(0.72))
         }
         .frame(maxWidth: .infinity)

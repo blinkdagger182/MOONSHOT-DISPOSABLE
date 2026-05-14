@@ -843,6 +843,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to take event photos.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This App Clip uses the microphone to record voice notes for the event guestbook.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save event photos to your library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -878,6 +879,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to take event photos.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This App Clip uses the microphone to record voice notes for the event guestbook.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save event photos to your library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
