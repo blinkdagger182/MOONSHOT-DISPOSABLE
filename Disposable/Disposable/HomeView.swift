@@ -836,16 +836,18 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             for child in modelScene.rootNode.childNodes {
                 wrapper.addChildNode(child.clone())
             }
-            normalizeModel(wrapper)
+            let modelHalfDepth = normalizeModel(wrapper)
+            applyCameraScreenTexture(to: wrapper)
             wrapper.eulerAngles.x = 0
             wrapper.eulerAngles.y = .pi
             phoneNode.addChildNode(wrapper)
 
-            addTapeLabel(eventName: eventName, z: 0.141, facesBack: false)
+            let surfaceOffset: Float = 0.004
+            addTapeLabel(eventName: eventName, z: modelHalfDepth + surfaceOffset, facesBack: false)
             return true
         }
 
-        private func normalizeModel(_ node: SCNNode) {
+        private func normalizeModel(_ node: SCNNode) -> Float {
             let bounds = node.boundingBox
             let min = bounds.min
             let max = bounds.max
@@ -853,18 +855,44 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             let height = max.y - min.y
             let depth = max.z - min.z
             let largest = Swift.max(width, Swift.max(height, depth))
-            guard largest > 0 else { return }
+            guard largest > 0 else { return 0.137 }
 
             let targetHeight: Float = 3.1
             let scale = targetHeight / largest
-            node.scale = SCNVector3(scale, scale, scale)
-
             let center = SCNVector3(
                 (min.x + max.x) / 2,
                 (min.y + max.y) / 2,
                 (min.z + max.z) / 2
             )
+
+            node.scale = SCNVector3(scale, scale, scale)
             node.position = SCNVector3(-center.x * scale, -center.y * scale, -center.z * scale)
+            return (depth * scale) / 2
+        }
+
+        private func applyCameraScreenTexture(to root: SCNNode) {
+            let screenImage = cameraScreenImage()
+            func visit(_ node: SCNNode) {
+                if let geometry = node.geometry {
+                    for material in geometry.materials where material.name == "Display" {
+                        material.diffuse.contents = screenImage
+                        material.diffuse.wrapS = .clamp
+                        material.diffuse.wrapT = .clamp
+                        material.diffuse.magnificationFilter = .linear
+                        material.diffuse.minificationFilter = .linear
+                        material.emission.contents = screenImage
+                        material.roughness.contents = 0.55
+                        material.metalness.contents = 0
+                        material.lightingModel = .constant
+                    }
+                }
+
+                for child in node.childNodes {
+                    visit(child)
+                }
+            }
+
+            visit(root)
         }
 
         private func buildFallbackPhone(eventName: String) {
@@ -980,7 +1008,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
         }
 
         private func addTapeLabel(eventName: String, parent: SCNNode? = nil, z: Float, facesBack: Bool, followsModelTilt: Bool = false) {
-            let tape = SCNPlane(width: 1.16, height: 0.28)
+            let tape = SCNPlane(width: 1.16, height: 0.29)
             let tapeMaterial = SCNMaterial()
             tapeMaterial.diffuse.contents = tapeTexture(eventName: eventName)
             tapeMaterial.roughness.contents = 0.95
@@ -1003,34 +1031,188 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
 
         private func tapeTexture(eventName: String) -> UIImage {
             let size = CGSize(width: 520, height: 128)
-            let renderer = UIGraphicsImageRenderer(size: size)
+            let renderer = UIGraphicsImageRenderer(size: size, format: {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 2
+                format.opaque = false
+                return format
+            }())
 
             return renderer.image { _ in
                 let rect = CGRect(origin: .zero, size: size)
-                UIColor(red: 0.64, green: 0.59, blue: 0.66, alpha: 1).setFill()
-                UIBezierPath(roundedRect: rect, cornerRadius: 18).fill()
+                UIColor.clear.setFill()
+                UIRectFill(rect)
 
-                UIColor(red: 0.46, green: 0.43, blue: 0.48, alpha: 0.22).setStroke()
-                let border = UIBezierPath(roundedRect: rect.insetBy(dx: 4, dy: 4), cornerRadius: 14)
-                border.lineWidth = 4
-                border.stroke()
+                let tapeRect = rect.insetBy(dx: 16, dy: 18)
+                let tapePath = UIBezierPath()
+                tapePath.move(to: CGPoint(x: tapeRect.minX + 13, y: tapeRect.minY + 7))
+                tapePath.addLine(to: CGPoint(x: tapeRect.minX + 74, y: tapeRect.minY + 2))
+                tapePath.addLine(to: CGPoint(x: tapeRect.midX - 10, y: tapeRect.minY + 8))
+                tapePath.addLine(to: CGPoint(x: tapeRect.maxX - 62, y: tapeRect.minY + 0))
+                tapePath.addLine(to: CGPoint(x: tapeRect.maxX - 8, y: tapeRect.minY + 9))
+                tapePath.addLine(to: CGPoint(x: tapeRect.maxX - 15, y: tapeRect.midY - 4))
+                tapePath.addLine(to: CGPoint(x: tapeRect.maxX - 5, y: tapeRect.maxY - 9))
+                tapePath.addLine(to: CGPoint(x: tapeRect.maxX - 70, y: tapeRect.maxY - 2))
+                tapePath.addLine(to: CGPoint(x: tapeRect.midX + 24, y: tapeRect.maxY - 8))
+                tapePath.addLine(to: CGPoint(x: tapeRect.minX + 62, y: tapeRect.maxY - 1))
+                tapePath.addLine(to: CGPoint(x: tapeRect.minX + 7, y: tapeRect.maxY - 10))
+                tapePath.addLine(to: CGPoint(x: tapeRect.minX + 15, y: tapeRect.midY + 2))
+                tapePath.close()
+
+                UIColor(red: 0.59, green: 0.58, blue: 0.62, alpha: 0.95).setFill()
+                tapePath.fill()
+
+                UIColor.white.withAlphaComponent(0.08).setFill()
+                UIBezierPath(roundedRect: tapeRect.insetBy(dx: 26, dy: 12), cornerRadius: 10).fill()
+
+                UIColor(red: 0.24, green: 0.23, blue: 0.27, alpha: 0.18).setStroke()
+                tapePath.lineWidth = 3
+                tapePath.stroke()
 
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = .center
                 paragraph.lineBreakMode = .byTruncatingTail
 
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont(name: "MarkerFelt-Wide", size: 38) ?? UIFont.italicSystemFont(ofSize: 38),
-                    .foregroundColor: UIColor(red: 0.08, green: 0.07, blue: 0.1, alpha: 1),
+                    .font: UIFont(name: "MarkerFelt-Wide", size: 35) ?? UIFont.italicSystemFont(ofSize: 35),
+                    .foregroundColor: UIColor(red: 0.12, green: 0.1, blue: 0.16, alpha: 0.86),
                     .paragraphStyle: paragraph
                 ]
                 eventName.draw(
-                    with: rect.insetBy(dx: 34, dy: 38),
+                    with: rect.insetBy(dx: 52, dy: 40),
                     options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
                     attributes: attributes,
                     context: nil
                 )
             }
+        }
+
+        private func addCameraScreenOverlay(z: Float) {
+            let screen = SCNPlane(width: 1.31, height: 2.8)
+            let material = SCNMaterial()
+            material.diffuse.contents = cameraScreenImage()
+            material.emission.contents = UIColor.black
+            material.roughness.contents = 0.82
+            material.metalness.contents = 0
+            material.isDoubleSided = false
+            material.writesToDepthBuffer = false
+            material.readsFromDepthBuffer = true
+            material.lightingModel = .constant
+            screen.materials = [material]
+
+            let screenNode = SCNNode(geometry: screen)
+            screenNode.position = SCNVector3(0, 0, z)
+            screenNode.eulerAngles.y = .pi
+            screenNode.renderingOrder = 18
+            phoneNode.addChildNode(screenNode)
+        }
+
+        private func cameraScreenImage() -> UIImage {
+            if let url = Bundle.main.url(forResource: "CameraScreenMockup", withExtension: "png"),
+               let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+
+            return UIImage(named: "CameraScreenMockup") ?? cameraScreenTexture()
+        }
+
+        private func cameraScreenTexture() -> UIImage {
+            let size = CGSize(width: 430, height: 920)
+            let renderer = UIGraphicsImageRenderer(size: size, format: {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 2
+                format.opaque = true
+                return format
+            }())
+
+            return renderer.image { context in
+                let rect = CGRect(origin: .zero, size: size)
+                let cg = context.cgContext
+
+                let gradient = CGGradient(
+                    colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                    colors: [
+                        UIColor(red: 0.78, green: 0.78, blue: 0.74, alpha: 1).cgColor,
+                        UIColor(red: 0.49, green: 0.48, blue: 0.45, alpha: 1).cgColor,
+                        UIColor(red: 0.28, green: 0.23, blue: 0.21, alpha: 1).cgColor
+                    ] as CFArray,
+                    locations: [0, 0.55, 1]
+                )
+                cg.drawLinearGradient(gradient!, start: CGPoint(x: 0, y: 0), end: CGPoint(x: size.width, y: size.height), options: [])
+
+                UIColor(red: 0.88, green: 0.78, blue: 0.58, alpha: 0.45).setFill()
+                let table = UIBezierPath()
+                table.move(to: CGPoint(x: -35, y: 105))
+                table.addLine(to: CGPoint(x: 345, y: -38))
+                table.addLine(to: CGPoint(x: 428, y: 84))
+                table.addLine(to: CGPoint(x: 42, y: 250))
+                table.close()
+                table.fill()
+
+                UIColor.black.withAlphaComponent(0.18).setFill()
+                UIBezierPath(rect: CGRect(x: 0, y: 0, width: size.width, height: size.height)).fill(with: .sourceAtop, alpha: 0.16)
+
+                let blurOverlay = UIColor(red: 0.72, green: 0.72, blue: 0.68, alpha: 0.22)
+                blurOverlay.setFill()
+                UIBezierPath(roundedRect: rect.insetBy(dx: 0, dy: 0), cornerRadius: 32).fill(with: .screen, alpha: 0.26)
+
+                drawCameraHUD(eventName: currentEventName, in: rect)
+            }
+        }
+
+        private func drawCameraHUD(eventName: String, in rect: CGRect) {
+            let titleFont = UIFont.systemFont(ofSize: 29, weight: .heavy)
+            let subtitleFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
+            let smallFont = UIFont.systemFont(ofSize: 15, weight: .bold)
+
+            UIColor.white.withAlphaComponent(0.95).setFill()
+            "3:46".draw(at: CGPoint(x: 48, y: 22), withAttributes: [.font: UIFont.monospacedDigitSystemFont(ofSize: 22, weight: .bold), .foregroundColor: UIColor.white])
+            eventName.draw(
+                in: CGRect(x: 70, y: 78, width: rect.width - 140, height: 38),
+                withAttributes: [.font: titleFont, .foregroundColor: UIColor.white, .paragraphStyle: centeredParagraph()]
+            )
+            "Tap to invite friends!".draw(
+                in: CGRect(x: 70, y: 114, width: rect.width - 140, height: 24),
+                withAttributes: [.font: subtitleFont, .foregroundColor: UIColor.white.withAlphaComponent(0.82), .paragraphStyle: centeredParagraph()]
+            )
+
+            drawRoundedControl(rect: CGRect(x: 364, y: 83, width: 42, height: 42), text: "⚙")
+            drawRoundedControl(rect: CGRect(x: 365, y: 405, width: 40, height: 40), text: "↯")
+            drawRoundedControl(rect: CGRect(x: 365, y: 453, width: 40, height: 40), text: "⚡")
+
+            drawRoundedControl(rect: CGRect(x: 91, y: 760, width: 52, height: 52), text: "1x")
+            drawRoundedControl(rect: CGRect(x: 288, y: 760, width: 52, height: 52), text: "↻")
+
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 176, y: 744, width: 78, height: 78)).fill()
+            UIColor(red: 0.45, green: 0.47, blue: 0.92, alpha: 1).setStroke()
+            let shutterRing = UIBezierPath(ovalIn: CGRect(x: 169, y: 737, width: 92, height: 92))
+            shutterRing.lineWidth = 6
+            shutterRing.stroke()
+
+            UIColor.black.setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 842, width: rect.width, height: 78)).fill()
+            "6".draw(at: CGPoint(x: 34, y: 853), withAttributes: [.font: UIFont.systemFont(ofSize: 48, weight: .heavy), .foregroundColor: UIColor.white])
+            "SHOTS\nREMAINING".draw(
+                in: CGRect(x: 88, y: 862, width: 120, height: 52),
+                withAttributes: [.font: UIFont.italicSystemFont(ofSize: 18), .foregroundColor: UIColor.white]
+            )
+        }
+
+        private func drawRoundedControl(rect: CGRect, text: String) {
+            UIColor(red: 0.14, green: 0.11, blue: 0.16, alpha: 0.68).setFill()
+            UIBezierPath(roundedRect: rect, cornerRadius: 10).fill()
+            text.draw(in: rect.insetBy(dx: 5, dy: 8), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 19, weight: .bold),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: centeredParagraph()
+            ])
+        }
+
+        private func centeredParagraph() -> NSMutableParagraphStyle {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            return paragraph
         }
 
         private func addCameraBump() {
