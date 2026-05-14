@@ -492,12 +492,18 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
             VStack(spacing: 10) {
                 ZStack {
                     LinearGradient(
-                        colors: phoneShowingBack
-                            ? [Color(hex: "#111635"), Color(hex: "#34105A"), Color(hex: "#17071E")]
-                            : [Color(hex: "#806552"), Color(hex: "#3D2F28"), Color(hex: "#0B0908")],
+                        colors: [Color(hex: "#806552"), Color(hex: "#3D2F28"), Color(hex: "#0B0908")],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
+                    .opacity(phoneShowingBack ? 0 : 1)
+
+                    LinearGradient(
+                        colors: [Color(hex: "#111635"), Color(hex: "#34105A"), Color(hex: "#17071E")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .opacity(phoneShowingBack ? 1 : 0)
 
                     VStack(spacing: 9) {
                         Spacer().frame(height: 18)
@@ -542,6 +548,7 @@ private struct POVDashboardLayout<CreateDestination: View, JoinDestination: View
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .frame(maxWidth: .infinity)
                 .frame(height: heroHeight)
+                .animation(.easeInOut(duration: 1.15), value: phoneShowingBack)
 
                 VStack(spacing: 10) {
                     NavigationLink(destination: createDestination) {
@@ -830,11 +837,11 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                 wrapper.addChildNode(child.clone())
             }
             normalizeModel(wrapper)
-            wrapper.eulerAngles.x = -0.08
+            wrapper.eulerAngles.x = 0
             wrapper.eulerAngles.y = .pi
             phoneNode.addChildNode(wrapper)
 
-            addTapeLabel(eventName: eventName, z: 0.29, facesBack: true)
+            addTapeLabel(eventName: eventName, z: 0.141, facesBack: false)
             return true
         }
 
@@ -972,19 +979,26 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             addTapeLabel(eventName: eventName, z: -0.17, facesBack: false)
         }
 
-        private func addTapeLabel(eventName: String, z: Float, facesBack: Bool) {
-            let tape = SCNPlane(width: 1.08, height: 0.26)
+        private func addTapeLabel(eventName: String, parent: SCNNode? = nil, z: Float, facesBack: Bool, followsModelTilt: Bool = false) {
+            let tape = SCNPlane(width: 1.16, height: 0.28)
             let tapeMaterial = SCNMaterial()
             tapeMaterial.diffuse.contents = tapeTexture(eventName: eventName)
-            tapeMaterial.roughness.contents = 0.9
-            tapeMaterial.isDoubleSided = false
+            tapeMaterial.roughness.contents = 0.95
+            tapeMaterial.metalness.contents = 0
+            tapeMaterial.isDoubleSided = true
+            tapeMaterial.writesToDepthBuffer = false
+            tapeMaterial.readsFromDepthBuffer = true
             tape.materials = [tapeMaterial]
 
-            tapeNode = SCNNode(geometry: tape)
-            tapeNode?.position = SCNVector3(0, 0.45, z)
-            tapeNode?.eulerAngles.z = -0.06
-            tapeNode?.eulerAngles.y = facesBack ? .pi : 0
-            phoneNode.addChildNode(tapeNode!)
+            let tapeNode = SCNNode(geometry: tape)
+            tapeNode.position = SCNVector3(0, 0.34, z)
+            tapeNode.eulerAngles.x = followsModelTilt ? -0.08 : 0
+            tapeNode.eulerAngles.z = 0
+            tapeNode.eulerAngles.y = facesBack ? .pi : 0
+            tapeNode.renderingOrder = 30
+
+            self.tapeNode = tapeNode
+            (parent ?? phoneNode).addChildNode(tapeNode)
         }
 
         private func tapeTexture(eventName: String) -> UIImage {
@@ -1006,12 +1020,12 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                 paragraph.lineBreakMode = .byTruncatingTail
 
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 42, weight: .black),
+                    .font: UIFont(name: "MarkerFelt-Wide", size: 38) ?? UIFont.italicSystemFont(ofSize: 38),
                     .foregroundColor: UIColor(red: 0.08, green: 0.07, blue: 0.1, alpha: 1),
                     .paragraphStyle: paragraph
                 ]
                 eventName.draw(
-                    with: rect.insetBy(dx: 34, dy: 36),
+                    with: rect.insetBy(dx: 34, dy: 38),
                     options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
                     attributes: attributes,
                     context: nil
