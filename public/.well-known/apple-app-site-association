@@ -3,13 +3,13 @@
     "apps": [],
     "details": [
       {
-        "appID": "9WW9N57U4X.com.curel.Disposable.Clip",
+        "appID": "8H5C9P92ZB.com.riskcreatives.tetamu.clip",
         "paths": [
           "/clip*"
         ]
       },
       {
-        "appID": "9WW9N57U4X.com.curel.Disposable",
+        "appID": "8H5C9P92ZB.com.riskcreatives.tetamu",
         "paths": [
           "/clip*"
         ]
@@ -18,7 +18,7 @@
   },
   "appclips": {
     "apps": [
-      "9WW9N57U4X.com.curel.Disposable.Clip"
+      "8H5C9P92ZB.com.riskcreatives.tetamu.clip"
     ]
   }
 }

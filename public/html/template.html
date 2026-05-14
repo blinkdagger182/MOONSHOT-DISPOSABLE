@@ -3,77 +3,112 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event Template</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Tetamu Guest Camera</title>
 
-    <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="../images/SubMark.png">
-
-    <!-- Link to external CSS -->
     <link rel="stylesheet" href="../css/template.css">
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@100;300;400;900&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
-        rel="stylesheet">
-
-    <!-- Firebase SDK (UMD Version) -->
     <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-storage-compat.js"></script>
-
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-
-    <!-- Custom Script -->
     <script src="../js/template.js" defer></script>
 </head>
 
 <body>
-    <header class="d-flex flex-wrap justify-content-between align-items-center px-3 py-2" style="background-color: var(--purple);">
-        <a href="../index.html">
-            <img src="../images/SmallLogo.png" alt="Disposable Logo" style="height: 80px;">
-        </a>
-        <nav class="d-flex flex-wrap gap-3">
-            <a href="../index.html" class="nav">Home</a>
-            <a href="about.html" class="nav">About</a>
-            <a href="support.html" class="nav">Support</a>
-            <div class="dropdown">
-                <a href="#" class="nav dropbtn">Policies &#9662;</a>
-                <div class="dropdown-content">
-                    <a href="privacy.html">Privacy Policy</a>
-                    <a href="terms.html">Terms &amp; Conditions</a>
+    <main class="guest-app">
+        <section id="welcomeScreen" class="flow-screen">
+            <div class="flow-card">
+                <p class="flow-kicker">Welcome to</p>
+                <h2 id="welcomeEventName">Tetamu Event</h2>
+                <p class="flow-copy">Capture moments, leave voice notes, and be part of the story.</p>
+                <button id="startJoinBtn" class="button">Join as Guest</button>
+            </div>
+        </section>
+
+        <section id="nameScreen" class="flow-screen hidden">
+            <div class="flow-card">
+                <h2>Nice to meet you</h2>
+                <p class="flow-copy">What's your name?</p>
+                <input id="guestNameInputFlow" type="text" maxlength="40" placeholder="Your name" autocomplete="name">
+                <label class="terms-row">
+                    <input id="termsCheckFlow" type="checkbox">
+                    <span>I accept <a href="/terms-co" target="_blank" rel="noopener noreferrer">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy</a>.</span>
+                </label>
+                <button id="continueFlowBtn" class="button">Continue</button>
+            </div>
+        </section>
+
+        <section class="camera-shell" aria-label="Guest camera">
+            <div class="camera-stage">
+                <video id="cameraFeed" autoplay playsinline muted></video>
+                <div id="snapOverlay" class="snap-overlay hidden"></div>
+                <div id="snapPreview" class="snap-preview hidden"></div>
+                <div id="cameraFallback" class="camera-fallback hidden">
+                    <p>Camera unavailable on this browser.</p>
+                    <label for="fallbackUpload" class="fallback-btn">Upload Photo</label>
+                </div>
+
+                <div class="top-overlay">
+                    <button class="chev-btn" aria-label="Back">‹</button>
+                    <div class="event-title-wrap">
+                        <h1 id="eventName">Loading event...</h1>
+                        <p id="eventMeta">Tap to invite friends!</p>
+                    </div>
+                    <button id="settingsBtn" class="square-icon" aria-label="Settings">⚙</button>
+                </div>
+
+                <div class="side-controls">
+                    <button id="switchCameraBtn" class="square-icon" aria-label="Switch camera">🔄</button>
+                    <button id="flashHintBtn" class="square-icon" aria-label="Flash note">⚡︎</button>
+                </div>
+
+                <div class="camera-overlay">
+                    <div class="capture-actions">
+                        <button id="zoomBtn" class="square-icon" aria-label="Zoom">1x</button>
+                        <button id="captureBtn" class="capture-btn" aria-label="Take photo"></button>
+                        <button id="voiceNoteBtn" class="thumb-slot square-icon" aria-label="Record voice note">🎙</button>
+                    </div>
                 </div>
             </div>
-        </nav>
-    </header>
-    
+            <canvas id="captureCanvas" class="hidden"></canvas>
+            <input id="fallbackUpload" type="file" accept="image/*" capture="environment" multiple class="hidden">
+        </section>
 
-    <div class="information">
-        <h1>Loading...</h1>
-        <p>Loading event details...</p>
-    </div>
+        <section class="status-dock">
+            <div class="shots-block">
+                <strong id="shotsLeft">-</strong>
+                <span>SHOTS REMAINING</span>
+            </div>
+            <button id="openGalleryBtn" class="dock-btn" aria-label="View gallery">◫</button>
+            <label for="fallbackUpload" id="uploadDockBtn" class="dock-btn" aria-label="Upload photo">⬆</label>
+            <button id="downloadAllBtn" class="dock-btn" aria-label="Download all images">⇪</button>
+            <button class="dock-pill" aria-label="Shots left"><span id="shotsLeftSmall">-</span> left</button>
+        </section>
 
-    <div class="buttons">
-        <div class="button first">Download all images</div>
-    </div>
+        <section id="voiceSection" class="voice-section hidden">
+            <h2>Voice Guestbook</h2>
+            <p id="voiceHint">Leave a voice note for the host.</p>
+            <div class="voice-controls">
+                <button id="recordVoiceBtn" class="button">Start Recording</button>
+                <button id="stopVoiceBtn" class="button ghost-btn" disabled>Stop</button>
+            </div>
+            <p id="voiceTimer">00:00</p>
+        </section>
 
-    <div class="photoGrid"></div>
+        <section id="lockedSection" class="locked-section hidden">
+            <h2>All set</h2>
+            <p id="lockedMessage">Memories will reveal when the host opens the album.</p>
+        </section>
 
-    <footer>
-        <p>&copy; 2025 Disposable. All rights reserved.</p>
-    </footer>
+        <section id="gallerySection" class="gallery hidden">
+            <h2>Event Photos</h2>
+            <div id="photoGrid" class="photoGrid"></div>
+        </section>
+    </main>
 
-    <!-- Bootstrap JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-        crossorigin="anonymous"></script>
+    <div id="toast" class="toast hidden"></div>
 </body>
 
 </html>

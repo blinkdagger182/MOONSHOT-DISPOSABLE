@@ -1,183 +1,539 @@
-//
-//  CreateEvent.swift
-//  Disposable
-//
-//  Created by Clementine CUREL on 12/01/2025.
-//
-
 import SwiftUI
 import FirebaseFirestore
+import CoreImage.CIFilterBuiltins
+import UIKit
 
 struct CreateEventView: View {
     @Binding var isInEvent: Bool
     @Binding var eventData: [String: Any]?
 
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
 
-    @State private var userName: String = ""
-    @State private var eventName: String = ""
-    @State private var startNow: Bool = true
-    @State private var duration: Int = 8
-    @State private var photosReveal: String = "Immediately"
-    @State private var photosPerPerson: Int = 5
-    @State private var hasAcceptedTerms: Bool = false
-
-    var body: some View {
-        VStack {
-            Form {
-                Section(header: Text("EVENT DETAILS")) {
-                    TextField("Your name / pseudo", text: $userName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                    TextField("Event name", text: $eventName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                }
-
-                Section(header: Text("Start of the event")) {
-                    Picker("", selection: $startNow) {
-                        Text("Now").tag(true)
-                        Text("Start Later").tag(false)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-
-                Section(header: Text("Duration of the event")) {
-                    Picker("", selection: $duration) {
-                        Text("12h").tag(12)
-                        Text("24h").tag(24)
-                        Text("48h").tag(48)
-                        Text("72h").tag(72)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-
-                Section(header: Text("Photos reveal")) {
-                    Picker("", selection: $photosReveal) {
-                        Text("Immediately").tag("Immediately")
-                        Text("At the end").tag("At the end")
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-
-                Section(header: Text("Photos per person")) {
-                    Picker("", selection: $photosPerPerson) {
-                        Text("5").tag(5)
-                        Text("10").tag(10)
-                        Text("15").tag(15)
-                        Text("20").tag(20)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-            }
-
-            // Terms and Conditions toggle
-            Toggle(isOn: $hasAcceptedTerms) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("I agree to the")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                    HStack {
-                        NavigationLink(destination: PrivacyPolicyView()) {
-                            Text("Privacy Policy")
-                                .underline()
-                                .foregroundColor(Color(hex: "#FFC3DC"))
-                        }
-                        Text("and")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                        NavigationLink(destination: TermsAndConditionsView()) {
-                            Text("Terms and Conditions")
-                                .underline()
-                                .foregroundColor(Color(hex: "#FFC3DC"))
-                        }
-                    }
-                }
-            }
-            .padding()
-            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "#09745F")))
-
-            // Validate Button
-            Button(action: {
-                createEvent()
-            }) {
-                Text("Validate")
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(userName.isEmpty || eventName.isEmpty || !hasAcceptedTerms ? Color.gray : Color(hex: "#09745F"))
-                    .foregroundColor(.white)
-                    .fontWeight(.bold)
-                    .cornerRadius(10)
-                    .padding(.horizontal)
-            }
-            .disabled(userName.isEmpty || eventName.isEmpty || !hasAcceptedTerms)
-        }
-        .padding()
-        .navigationBarTitle("Creation", displayMode: .inline)
-        .navigationBarBackButtonHidden(false)
+    private enum Step: Int, CaseIterable {
+        case details
+        case settings
+        case share
     }
 
-    private func createEvent() {
+    @State private var step: Step = .details
+
+    @State private var hostName: String = ""
+    @State private var eventName: String = "Aisyah & Hakim's Wedding"
+    @State private var locationName: String = "Kuala Lumpur, Malaysia"
+    @State private var eventDate: Date = Date()
+    @State private var durationHours: Int = 24
+
+    @State private var filterStyle: String = "none"
+    @State private var showFilterModal: Bool = false
+
+    @State private var guestLimit: Int = 120
+    @State private var allowVoiceNotes: Bool = true
+    @State private var voiceNoteMaxSeconds: Int = 120
+    @State private var revealMode: String = "At the end"
+    @State private var shotsPerGuest: Int = 25
+
+    @State private var hasAcceptedTerms: Bool = false
+
+    @State private var createdEventId: String?
+    @State private var createdEventLink: String?
+    @State private var selectedCardIndex: Int = 0
+
+    @State private var isSaving = false
+
+    private let cardThemes: [QRTheme] = [
+        QRTheme(name: "Classic", top: UIColor(red: 0.11, green: 0.13, blue: 0.2, alpha: 1), bottom: UIColor(red: 0.03, green: 0.04, blue: 0.08, alpha: 1), accent: UIColor(red: 0.92, green: 0.84, blue: 0.69, alpha: 1)),
+        QRTheme(name: "Rose Night", top: UIColor(red: 0.24, green: 0.1, blue: 0.18, alpha: 1), bottom: UIColor(red: 0.06, green: 0.02, blue: 0.08, alpha: 1), accent: UIColor(red: 0.98, green: 0.75, blue: 0.82, alpha: 1)),
+        QRTheme(name: "Emerald", top: UIColor(red: 0.07, green: 0.22, blue: 0.2, alpha: 1), bottom: UIColor(red: 0.02, green: 0.08, blue: 0.09, alpha: 1), accent: UIColor(red: 0.76, green: 0.94, blue: 0.9, alpha: 1))
+    ]
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(hex: "#0E1022"), Color(hex: "#0A0B14")], startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                header
+                progressDots
+
+                Group {
+                    switch step {
+                    case .details:
+                        detailsStep
+                    case .settings:
+                        settingsStep
+                    case .share:
+                        shareStep
+                    }
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            if showFilterModal {
+                filterModal
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private var header: some View {
+        HStack {
+            Button(action: {
+                if step == .details {
+                    dismiss()
+                } else if step == .settings {
+                    step = .details
+                }
+            }) {
+                Image(systemName: "chevron.left")
+                    .foregroundColor(.white)
+                    .padding(10)
+                    .background(Color.white.opacity(0.12), in: Circle())
+            }
+            .opacity(step == .share ? 0 : 1)
+
+            Spacer()
+
+            Text(titleForStep(step))
+                .font(.headline.bold())
+                .foregroundColor(.white)
+
+            Spacer()
+
+            Color.clear.frame(width: 40, height: 40)
+        }
+    }
+
+    private var progressDots: some View {
+        HStack(spacing: 8) {
+            ForEach(Step.allCases, id: \.self) { item in
+                Capsule()
+                    .fill(item.rawValue <= step.rawValue ? Color(hex: "#E8D7FF") : Color.white.opacity(0.22))
+                    .frame(width: item == step ? 28 : 10, height: 8)
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var detailsStep: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                card {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Event Details")
+                            .font(.title3.bold())
+                            .foregroundColor(.white)
+
+                        textField(title: "Host Name", text: $hostName, placeholder: "e.g. Riz")
+                        textField(title: "Event Name", text: $eventName, placeholder: "e.g. Aisyah & Hakim's Wedding")
+                        textField(title: "Location", text: $locationName, placeholder: "e.g. Kuala Lumpur, Malaysia")
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Date")
+                                .foregroundColor(.white.opacity(0.8))
+                            DatePicker("", selection: $eventDate, displayedComponents: [.date, .hourAndMinute])
+                                .labelsHidden()
+                                .datePickerStyle(.compact)
+                                .colorScheme(.dark)
+                                .tint(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("How Long")
+                                .foregroundColor(.white.opacity(0.8))
+                            Picker("Duration", selection: $durationHours) {
+                                Text("12h").tag(12)
+                                Text("24h").tag(24)
+                                Text("48h").tag(48)
+                                Text("72h").tag(72)
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                }
+
+                card {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Filter Style")
+                            .font(.headline)
+                            .foregroundColor(.white)
+
+                        Button(action: { showFilterModal = true }) {
+                            HStack {
+                                Text(filterStyle == "vintage" ? "Vintage" : "None")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                            .padding()
+                            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        Text("Vintage applies a warm film effect to photos taken in the event.")
+                            .font(.footnote)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+
+                primaryButton(title: "Continue to Event Settings", disabled: hostName.trimmingCharacters(in: .whitespaces).isEmpty || eventName.trimmingCharacters(in: .whitespaces).isEmpty) {
+                    step = .settings
+                }
+            }
+            .padding(.bottom, 20)
+        }
+    }
+
+    private var settingsStep: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                card {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Event Settings")
+                            .font(.title3.bold())
+                            .foregroundColor(.white)
+
+                        stepperRow(title: "How many people", value: $guestLimit, range: 10...500)
+                        stepperRow(title: "Shots per guest", value: $shotsPerGuest, range: 5...50)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(isOn: $allowVoiceNotes) {
+                                Text("Allow voice notes")
+                                    .foregroundColor(.white)
+                            }
+                            .tint(Color(hex: "#E8D7FF"))
+
+                            if allowVoiceNotes {
+                                stepperRow(title: "Max length (seconds)", value: $voiceNoteMaxSeconds, range: 30...180)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Reveal setting")
+                                .foregroundColor(.white.opacity(0.85))
+                            Picker("", selection: $revealMode) {
+                                Text("Immediately").tag("Immediately")
+                                Text("At the end").tag("At the end")
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                }
+
+                Toggle(isOn: $hasAcceptedTerms) {
+                    Text("I accept Terms and Privacy")
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                .tint(Color(hex: "#E8D7FF"))
+                .padding(.horizontal, 4)
+
+                primaryButton(title: isSaving ? "Creating..." : "Create Event", disabled: !hasAcceptedTerms || isSaving) {
+                    Task { await createEvent() }
+                }
+            }
+            .padding(.bottom, 20)
+        }
+    }
+
+    private var shareStep: some View {
+        VStack(spacing: 14) {
+            card {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Share your event")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+                    Text("Guests can scan to join. No app required.")
+                        .foregroundColor(.white.opacity(0.75))
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(cardThemes.indices, id: \.self) { index in
+                                qrCard(theme: cardThemes[index])
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(index == selectedCardIndex ? Color.white : Color.clear, lineWidth: 2)
+                                    )
+                                    .onTapGesture { selectedCardIndex = index }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Text("Swipe to browse styles")
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.65))
+                }
+            }
+
+            HStack(spacing: 10) {
+                shareButton(title: "WhatsApp") { shareSelectedQR() }
+                shareButton(title: "Instagram") { shareSelectedQR() }
+                shareButton(title: "Messages") { shareSelectedQR() }
+                shareButton(title: "More") { shareSelectedQR() }
+            }
+
+            primaryButton(title: "Finish and Open Dashboard", disabled: createdEventId == nil) {
+                dismiss()
+            }
+        }
+    }
+
+    private var filterModal: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { showFilterModal = false }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Select filter style")
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                filterOption(title: "None", value: "none")
+                filterOption(title: "Vintage", value: "vintage")
+            }
+            .padding(18)
+            .frame(maxWidth: 320)
+            .background(Color(hex: "#1A1E31"), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .transition(.opacity)
+        .zIndex(99)
+    }
+
+    private func filterOption(title: String, value: String) -> some View {
+        Button(action: {
+            filterStyle = value
+            showFilterModal = false
+        }) {
+            HStack {
+                Text(title)
+                    .foregroundColor(.white)
+                Spacer()
+                if filterStyle == value {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(hex: "#E8D7FF"))
+                }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func createEvent() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+
         let db = Firestore.firestore()
-        let eventId = "\(eventName)_\(UUID().uuidString)"
+        let cleanedName = eventName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let eventId = "\(cleanedName)_\(UUID().uuidString)"
 
         let eventDetails: [String: Any] = [
             "eventId": eventId,
-            "eventName": eventName,
-            "userName": userName,
-            "duration": duration,
-            "reveal": photosReveal,
-            "numberOfPhotos": photosPerPerson,
-            
-            "startTime": FieldValue.serverTimestamp()
+            "eventName": cleanedName,
+            "userName": hostName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "location": locationName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "duration": durationHours,
+            "reveal": revealMode,
+            "numberOfPhotos": shotsPerGuest,
+            "guestLimit": guestLimit,
+            "allowVoiceNotes": allowVoiceNotes,
+            "voiceNoteMaxSeconds": voiceNoteMaxSeconds,
+            "filterStyle": filterStyle,
+            "startTime": Timestamp(date: eventDate)
         ]
 
-        db.collection("events").document(eventId).setData(eventDetails) { error in
-            if let error = error {
-                print("Error saving event: \(error.localizedDescription)")
-            } else {
-                print("Event created successfully!")
+        do {
+            try await db.collection("events").document(eventId).setData(eventDetails)
+            try await db.collection("events").document(eventId).collection("participants").addDocument(data: [
+                "name": hostName,
+                "role": "organizer",
+                "userId": UUID().uuidString,
+                "photosTaken": 0
+            ])
 
-                let organizerData: [String: Any] = [
-                    "name": self.userName,
-                    "role": "organizer",
-                    "userId": UUID().uuidString
-                ]
-
-                db.collection("events").document(eventId).collection("participants").addDocument(data: organizerData) { error in
-                    if let error = error {
-                        print("Error adding organizer to participants: \(error.localizedDescription)")
-                    } else {
-                        print("Organizer added to participants collection")
-
-                        db.collection("events").document(eventId).getDocument { document, error in
-                            if let document = document, document.exists {
-                                DispatchQueue.main.async {
-                                    self.isInEvent = true
-                                    self.eventData = document.data()
-                                    self.saveEventState()
-                                    self.presentationMode.wrappedValue.dismiss()
-                                }
-                            }
-                        }
-                    }
-                }
+            let snapshot = try await db.collection("events").document(eventId).getDocument()
+            await MainActor.run {
+                isInEvent = true
+                eventData = snapshot.data()
+                createdEventId = eventId
+                createdEventLink = "https://guest.tetamu.app/clip?eventId=\(eventId)"
+                saveEventState()
+                step = .share
             }
+        } catch {
+            print("Create event failed: \(error.localizedDescription)")
         }
     }
+
     private func saveEventState() {
         if let eventData = eventData {
             var sanitizedEventData = eventData
-            
-            // Convert FIRTimestamp to a UNIX timestamp (Double)
             if let startTime = eventData["startTime"] as? Timestamp {
                 sanitizedEventData["startTime"] = startTime.dateValue().timeIntervalSince1970
             }
 
-            // Save to UserDefaults
             if let savedData = try? JSONSerialization.data(withJSONObject: sanitizedEventData, options: []) {
                 UserDefaults.standard.set(savedData, forKey: "currentEventData")
                 UserDefaults.standard.set(true, forKey: "isInEvent")
             }
         }
     }
+
+    private func generateQRImage(for string: String, size: CGFloat = 300) -> UIImage? {
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "Q"
+
+        guard let output = filter.outputImage else { return nil }
+        let scale = size / output.extent.width
+        let transformed = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+        guard let cgImage = context.createCGImage(transformed, from: transformed.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    private func renderQRCard(theme: QRTheme) -> UIImage? {
+        guard let link = createdEventLink,
+              let qrImage = generateQRImage(for: link, size: 220) else { return nil }
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 290, height: 430))
+        return renderer.image { ctx in
+            let rect = CGRect(x: 0, y: 0, width: 290, height: 430)
+
+            let cgColors = [theme.top.cgColor, theme.bottom.cgColor] as CFArray
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let gradient = CGGradient(colorsSpace: colorSpace, colors: cgColors, locations: [0, 1])!
+            ctx.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: 430), options: [])
+
+            let title = NSString(string: eventName)
+            title.draw(in: CGRect(x: 18, y: 24, width: 254, height: 52), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 26, weight: .bold),
+                .foregroundColor: theme.accent
+            ])
+
+            let subtitle = NSString(string: "Scan to join")
+            subtitle.draw(in: CGRect(x: 18, y: 66, width: 200, height: 24), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 15, weight: .medium),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.9)
+            ])
+
+            UIColor.white.setFill()
+            UIBezierPath(roundedRect: CGRect(x: 35, y: 110, width: 220, height: 220), cornerRadius: 18).fill()
+            qrImage.draw(in: CGRect(x: 50, y: 125, width: 190, height: 190))
+
+            let footer = NSString(string: "guest.tetamu.app")
+            footer.draw(in: CGRect(x: 18, y: 350, width: 254, height: 30), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 16, weight: .semibold),
+                .foregroundColor: UIColor.white
+            ])
+        }
+    }
+
+    private func shareSelectedQR() {
+        guard selectedCardIndex < cardThemes.count,
+              let cardImage = renderQRCard(theme: cardThemes[selectedCardIndex]),
+              let link = createdEventLink else { return }
+
+        let message = "Join my event on Tetamu: \(link)"
+        let activityVC = UIActivityViewController(activityItems: [message, cardImage], applicationActivities: nil)
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = windowScene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
+        }
+    }
+
+    private func titleForStep(_ step: Step) -> String {
+        switch step {
+        case .details: return "Create Event"
+        case .settings: return "Event Settings"
+        case .share: return "Share your event"
+        }
+    }
+
+    private func stepperRow(title: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        HStack {
+            Text(title)
+                .foregroundColor(.white)
+            Spacer()
+            Stepper(value: value, in: range) {
+                Text("\(value.wrappedValue)")
+                    .foregroundColor(.white)
+                    .fontWeight(.semibold)
+            }
+            .frame(width: 120)
+            .tint(Color(hex: "#E8D7FF"))
+        }
+    }
+
+    private func textField(title: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .foregroundColor(.white.opacity(0.8))
+            TextField(placeholder, text: text)
+                .padding(12)
+                .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                .foregroundColor(.white)
+        }
+    }
+
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) { content() }
+            .padding(16)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func primaryButton(title: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .fontWeight(.bold)
+                .foregroundColor(disabled ? .white.opacity(0.65) : Color(hex: "#09121E"))
+                .frame(maxWidth: .infinity)
+                .padding(14)
+                .background(disabled ? Color.white.opacity(0.15) : Color(hex: "#E8D7FF"), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(disabled)
+    }
+
+    private func shareButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.footnote.bold())
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func qrCard(theme: QRTheme) -> some View {
+        ZStack {
+            LinearGradient(colors: [Color(theme.top), Color(theme.bottom)], startPoint: .top, endPoint: .bottom)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            VStack(spacing: 8) {
+                Text(theme.name)
+                    .font(.footnote.bold())
+                    .foregroundColor(Color(theme.accent))
+                if let image = renderQRCard(theme: theme) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 170, height: 250)
+                }
+            }
+            .padding(10)
+        }
+        .frame(width: 190, height: 280)
+    }
+}
+
+private struct QRTheme {
+    let name: String
+    let top: UIColor
+    let bottom: UIColor
+    let accent: UIColor
 }

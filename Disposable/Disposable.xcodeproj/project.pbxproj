@@ -687,14 +687,16 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Disposable/Preview Content\"";
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Disposable/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Disposablel App";
+				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to take photos.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires access to the camera to take photos during events and store them in the shared event gallery.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires microphone access to record audio while capturing videos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app needs to access your gallery to save your memories.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs access to your photo library to allow you to view and save event photos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -705,8 +707,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -724,14 +726,16 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Disposable/Preview Content\"";
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Disposable/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Disposablel App";
+				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to take photos.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires access to the camera to take photos during events and store them in the shared event gallery.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires microphone access to record audio while capturing videos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app needs to access your gallery to save your memories.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs access to your photo library to allow you to view and save event photos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -742,8 +746,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -757,11 +761,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.DisposableTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -776,11 +780,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.DisposableTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -794,10 +798,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.DisposableUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -811,10 +815,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.DisposableUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -832,23 +836,25 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"DisposableClip/Preview Content\"";
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DisposableClip/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Disposable App";
+				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to take event photos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save event photos to your library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.Clip;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -865,24 +871,26 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"DisposableClip/Preview Content\"";
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DisposableClip/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Disposable App";
+				INFOPLIST_KEY_CFBundleDisplayName = Tetamu;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app uses the camera to take event photos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save event photos to your library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.0.0;
 				"OTHER_SWIFT_FLAGS[arch=*]" = "-DAPPCLIP";
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.Clip;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -896,11 +904,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.DisposableClipTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.cliptests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -915,11 +923,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.DisposableClipTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.cliptests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -933,10 +941,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.DisposableClipUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.clipuitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -950,10 +958,10 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WW9N57U4X;
+				DEVELOPMENT_TEAM = 8H5C9P92ZB;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.curel.Disposable.DisposableClipUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.riskcreatives.tetamu.clipuitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;

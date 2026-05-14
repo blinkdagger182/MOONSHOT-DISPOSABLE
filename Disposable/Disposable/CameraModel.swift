@@ -9,6 +9,8 @@ import AVFoundation
 import UIKit
 import FirebaseStorage
 import FirebaseFirestore
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 class CameraModel: NSObject, ObservableObject {
     @Published var session = AVCaptureSession()
@@ -19,6 +21,7 @@ class CameraModel: NSObject, ObservableObject {
     @Published var isFlashOn: Bool = false
     @Published var maxPhotos: Int = 0
     @Published var remainingPhotos: Int = 0
+    @Published var filterStyle: String = "none"
 
     
     // These get set externally by your CameraView
@@ -175,7 +178,10 @@ class CameraModel: NSObject, ObservableObject {
             print("No preview image to save.")
             return
         }
-        guard let data = image.jpegData(compressionQuality: 0.8) else {
+        
+        let outputImage = applySelectedFilter(to: image)
+        
+        guard let data = outputImage.jpegData(compressionQuality: 0.8) else {
             print("Failed to convert UIImage to JPEG.")
             return
         }
@@ -231,6 +237,23 @@ class CameraModel: NSObject, ObservableObject {
         }
         
         previewImage = nil
+    }
+
+    private func applySelectedFilter(to image: UIImage) -> UIImage {
+        guard filterStyle == "vintage",
+              let cgImage = image.cgImage else { return image }
+
+        let ciImage = CIImage(cgImage: cgImage)
+        let context = CIContext()
+        let filter = CIFilter.photoEffectTransfer()
+        filter.inputImage = ciImage
+
+        guard let output = filter.outputImage,
+              let outputCG = context.createCGImage(output, from: output.extent) else {
+            return image
+        }
+
+        return UIImage(cgImage: outputCG)
     }
     // MARK: - camera switch
     func switchCamera() {
@@ -307,6 +330,7 @@ class CameraModel: NSObject, ObservableObject {
                let maxPhotos = eventData["numberOfPhotos"] as? Int {
                 
                 self.maxPhotos = maxPhotos
+                self.filterStyle = (eventData["filterStyle"] as? String) ?? "none"
                 
                 let userRef = eventRef.collection("participants").whereField("name", isEqualTo: self.userName)
                 
