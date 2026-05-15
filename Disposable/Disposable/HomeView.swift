@@ -44,12 +44,12 @@ struct HomeView: View {
 
     @State private var eventEndTime: Date = Date()
     @State private var revealSetting: String = "Immediately"
-    @State private var homeEventName = "February 4 POV"
+    @State private var homeEventName = "Rizhan's House Party"
     @State private var phoneShowingBack = false
     @State private var hasInitializedDashboardControls = false
     @State private var selectedGuestLimit = 10
-    @State private var selectedPhotosPerPerson = 15
-    @State private var selectedRevealOption = "After"
+    @State private var selectedPhotosPerPerson = 10
+    @State private var selectedRevealOption = "12 hours after"
     @State private var selectedFilterOption = "Disposable film"
     @State private var selectedShareTemplate: QRShareTemplateStyle = .plain
     @State private var selectedShareBackground: QRShareBackground = .warm
@@ -68,18 +68,14 @@ struct HomeView: View {
                         emptyHostDashboard
                     }
 
-                    NavigationLink(
-                        destination: JoinEventView(
-                            isInEvent: $isInEvent,
-                            eventData: $eventData,
-                            initialEventId: deepLinkedEventId
-                        ),
-                        isActive: $navigateToJoinFromQR
-                    ) {
-                        EmptyView()
-                    }
-                    .hidden()
                 }
+            }
+            .navigationDestination(isPresented: $navigateToJoinFromQR) {
+                JoinEventView(
+                    isInEvent: $isInEvent,
+                    eventData: $eventData,
+                    initialEventId: deepLinkedEventId
+                )
             }
             .onAppear {
                 restoreEventState()
@@ -103,7 +99,7 @@ struct HomeView: View {
                     navigateToJoinFromQR = true
                 }
             }
-            .onChange(of: deepLinkedEventId) { newValue in
+            .onChange(of: deepLinkedEventId) { _, newValue in
                 if newValue != nil && !isInEvent {
                     navigateToJoinFromQR = true
                 }
@@ -265,7 +261,7 @@ struct HomeView: View {
         POVDashboardLayout(
             eventName: homeEventName,
             subtitle: subtitle(for: data),
-            statusText: countdownText.isEmpty ? "Guests are capturing memories" : "Reveal in \(countdownText)",
+            statusText: dashboardStatusText(for: data),
             phoneShowingBack: $phoneShowingBack,
             scheduleAction: { presentHomeModal(.details) },
             instantAction: { presentHomeModal(.details) },
@@ -298,7 +294,7 @@ struct HomeView: View {
         POVDashboardLayout(
             eventName: homeEventName,
             subtitle: "Share with friends!",
-            statusText: "Ended 3 months ago",
+            statusText: "Up to 10 Guests • Ends 23 May at 23:59",
             phoneShowingBack: $phoneShowingBack,
             scheduleAction: { presentHomeModal(.details) },
             instantAction: { presentHomeModal(.details) },
@@ -312,7 +308,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private func homeModalView(for modal: HomeDashboardModal) -> some View {
-        ZStack(alignment: .top) {
+        ZStack(alignment: .bottom) {
             HomeEventDetailsSheet(
                 summary: dashboardSummary(),
                 eventName: $homeEventName,
@@ -322,14 +318,12 @@ struct HomeView: View {
             } dismissAction: {
                 dismissHomeModal()
             }
-            .opacity(modal == .details ? 1 : 0.34)
-            .saturation(modal == .details ? 1 : 0.45)
             .allowsHitTesting(modal == .details)
 
-            if modal != .details {
-                Color.black.opacity(0.16)
+            if modal == .share {
+                Color.black.opacity(0.42)
                     .ignoresSafeArea()
-                    .transition(.opacity)
+                    .allowsHitTesting(false)
 
                 homeModalPage(for: modal)
                     .id(modal.id)
@@ -339,7 +333,8 @@ struct HomeView: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.88), value: modal)
         .onPreferenceChange(HomeSheetHeightPreferenceKey.self) { height in
             guard height > 0 else { return }
-            let detentHeight = clampedHomeModalHeight(height)
+            let persistentButtonHeight: CGFloat = modal == .details ? 76 : 0
+            let detentHeight = clampedHomeModalHeight(height + persistentButtonHeight)
             guard abs(homeModalMeasuredHeight - detentHeight) > 1 else { return }
             withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
                 homeModalMeasuredHeight = detentHeight
@@ -403,8 +398,8 @@ struct HomeView: View {
 
     private var childOverlayTransition: AnyTransition {
         .asymmetric(
-            insertion: .move(edge: .bottom).combined(with: .opacity),
-            removal: .scale(scale: 0.96, anchor: .top).combined(with: .opacity)
+            insertion: .scale(scale: 0.78, anchor: .bottom).combined(with: .move(edge: .bottom)),
+            removal: .scale(scale: 0.9, anchor: .bottom).combined(with: .move(edge: .bottom))
         )
     }
 
@@ -432,22 +427,22 @@ struct HomeView: View {
 
     private func clampedHomeModalHeight(_ height: CGFloat) -> CGFloat {
         let minimumHeight: CGFloat = 360
-        let maximumHeight = UIScreen.main.bounds.height * 0.86
+        let maximumHeight = UIScreen.main.bounds.height * 0.995
         return min(max(height, minimumHeight), maximumHeight)
     }
 
     private func contentHeight(for modal: HomeDashboardModal) -> CGFloat {
         switch modal {
         case .details:
-            return 640
+            return 724
         case .guests:
             return 560
         case .ended:
-            return 760
+            return 700
         case .reveal:
             return 430
         case .filter:
-            return 500
+            return 460
         case .photos:
             return 450
         case .share:
@@ -473,7 +468,7 @@ struct HomeView: View {
         guard !hasInitializedDashboardControls else { return }
         let data = eventData ?? [:]
         syncHomeEventName()
-        selectedPhotosPerPerson = data["numberOfPhotos"] as? Int ?? 15
+        selectedPhotosPerPerson = data["numberOfPhotos"] as? Int ?? 10
         selectedGuestLimit = data["guestLimit"] as? Int ?? max(participantsCount, 10)
         selectedRevealOption = revealTitle(from: data["reveal"] as? String)
         selectedFilterOption = filterTitle(from: data["filterStyle"] as? String)
@@ -496,24 +491,35 @@ struct HomeView: View {
         case "Immediately":
             return "During"
         case "At the end":
-            return "After"
+            return "12 hours after"
         default:
-            return "After"
+            return "12 hours after"
         }
     }
 
     private func endDateText(from data: [String: Any]) -> String {
         guard let duration = data["duration"] as? Int,
               let startTime = data["startTime"] as? Timestamp else {
-            return "Mon, Oct 23 • 2:00am GMT+1"
+            return "Sat 23 May • 23:59 GMT+8"
         }
 
         let endDate = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d • h:mma"
-        formatter.amSymbol = "am"
-        formatter.pmSymbol = "pm"
+        formatter.dateFormat = "EEE d MMM • HH:mm"
         return "\(formatter.string(from: endDate)) GMT+8"
+    }
+
+    private func dashboardStatusText(for data: [String: Any]) -> String {
+        let guestLimit = data["guestLimit"] as? Int ?? selectedGuestLimit
+        guard let duration = data["duration"] as? Int,
+              let startTime = data["startTime"] as? Timestamp else {
+            return "Up to \(guestLimit) Guests • Ends 23 May at 23:59"
+        }
+
+        let endDate = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM 'at' HH:mm"
+        return "Up to \(guestLimit) Guests • Ends \(formatter.string(from: endDate))"
     }
 
     private func subtitle(for data: [String: Any]) -> String {
@@ -683,13 +689,13 @@ struct HomeView: View {
            !storedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             homeEventName = storedName
         } else if homeEventName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            homeEventName = "February 4 POV"
+            homeEventName = "Rizhan's House Party"
         }
     }
 
     private func saveEventName(_ newValue: String) {
         let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedName = trimmedName.isEmpty ? "February 4 POV" : trimmedName
+        let resolvedName = trimmedName.isEmpty ? "Rizhan's House Party" : trimmedName
 
         homeEventName = resolvedName
         eventData?["eventName"] = resolvedName
@@ -906,25 +912,31 @@ private struct HomeEventDetailsSheet: View {
     @State private var isEditingTitle = false
     @State private var titleDraft = ""
     @FocusState private var titleFieldFocused: Bool
+    @State private var guestsCanViewGallery = true
+    @State private var expandingSelection: HomeDashboardModal?
+    @State private var inlineExpandedSelection: HomeDashboardModal?
 
     var body: some View {
-        HomeSheetContainer {
-            VStack(spacing: 22) {
+        ZStack(alignment: .bottom) {
+            HomeSheetContainer {
+                VStack(spacing: 10) {
                 HStack {
                     Button(action: dismissAction) {
-                        Image(systemName: "chevron.down")
-                            .font(.satoshi(.title3, weight: .bold))
+                        Image(systemName: "xmark")
+                            .font(.satoshi(size: 22, weight: .medium))
                             .foregroundStyle(.white.opacity(0.72))
                             .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.08), in: Circle())
+                            .background(Color.white.opacity(0.09), in: Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.09), lineWidth: 1))
                     }
+                    .buttonStyle(.plain)
 
                     Spacer()
 
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         if isEditingTitle {
                             TextField("Event name", text: $titleDraft)
-                                .font(.satoshi(size: 24, weight: .black))
+                                .font(.satoshi(size: 22, weight: .black))
                                 .foregroundStyle(.white)
                                 .textInputAutocapitalization(.words)
                                 .autocorrectionDisabled()
@@ -935,7 +947,7 @@ private struct HomeEventDetailsSheet: View {
                                 }
                         } else {
                             Text(summary.eventName)
-                                .font(.satoshi(size: 27, weight: .black))
+                                .font(.satoshi(size: 22, weight: .black))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
@@ -962,10 +974,14 @@ private struct HomeEventDetailsSheet: View {
                         } else {
                             Button(action: beginTitleEdit) {
                                 Image(systemName: "pencil")
-                                    .font(.satoshi(.headline, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.6))
-                                    .frame(width: 46, height: 34)
-                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                                    .font(.satoshi(size: 18, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                    .frame(width: 46, height: 30)
+                                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
                             }
                             .buttonStyle(.plain)
                         }
@@ -974,45 +990,128 @@ private struct HomeEventDetailsSheet: View {
                     Spacer()
 
                     Image(systemName: "ellipsis")
-                        .font(.satoshi(.title3, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 44, height: 44)
+                        .font(.satoshi(size: 24, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 36, height: 36)
                 }
+
+                HomeDetailsCoverSection(
+                    summary: summary,
+                    editAction: beginTitleEdit,
+                    photoAction: {}
+                )
 
                 VStack(spacing: 0) {
-                    HomeSettingRow(icon: "person.2", title: "Number of Guests", value: "Up to \(summary.guestLimit) participants") {
-                        selectAction(.guests)
-                    }
+                    settingRowOrInlinePanel(
+                        .guests,
+                        icon: "person.2",
+                        title: "Number of Guests",
+                        value: "Up to \(summary.guestLimit) participants"
+                    )
                     HomeDivider()
-                    HomeSettingRow(icon: "calendar", title: "Ended", value: summary.endedText) {
-                        selectAction(.ended)
-                    }
+                    settingRowOrInlinePanel(
+                        .ended,
+                        icon: "calendar",
+                        title: "Ended",
+                        value: summary.endedText
+                    )
                     HomeDivider()
-                    HomeSettingRow(icon: "hourglass", title: "Reveal Photos", value: summary.reveal) {
-                        selectAction(.reveal)
-                    }
+                    settingRowOrInlinePanel(
+                        .reveal,
+                        icon: "hourglass",
+                        title: "Reveal Photos",
+                        value: summary.reveal
+                    )
                     HomeDivider()
-                    HomeSettingRow(icon: "photo", title: "Filter", value: summary.filter) {
-                        selectAction(.filter)
-                    }
+                    settingRowOrInlinePanel(
+                        .filter,
+                        icon: "photo",
+                        title: "Filter",
+                        value: summary.filter
+                    )
                     HomeDivider()
-                    HomeSettingRow(icon: "camera", title: "Photos per Person", value: "\(summary.photosPerPerson) photos") {
-                        selectAction(.photos)
-                    }
+                    settingRowOrInlinePanel(
+                        .photos,
+                        icon: "camera",
+                        title: "Photos per Person",
+                        value: "\(summary.photosPerPerson) photos"
+                    )
                 }
 
-                Text("All photos will be available in the gallery")
-                    .font(.satoshi(.subheadline, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.44))
-                    .padding(.top, 4)
+                HStack(spacing: 16) {
+                    Image(systemName: "lock.open")
+                        .font(.satoshi(size: 21, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .frame(width: 34)
 
-                Spacer(minLength: 4)
+                    Text("Guests can view gallery")
+                        .font(.satoshi(size: 16, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+
+                    Spacer()
+
+                    Toggle("", isOn: $guestsCanViewGallery)
+                        .labelsHidden()
+                        .tint(Color(hex: "#5C55E8"))
+                        .scaleEffect(1.05)
+                }
+                .frame(height: 64)
+                .padding(.top, 2)
+                }
+                .padding(.bottom, 10)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 8) {
+                if inlineExpandedSelection == nil {
+                    Button(action: dismissAction) {
+                        Text("Dismiss")
+                            .font(.satoshi(size: 18, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 26))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 26)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1.2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    .background(Color.clear)
+                }
+            }
+
+            if let inlineExpandedSelection {
+                Color.black.opacity(0.48)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                            self.inlineExpandedSelection = nil
+                        }
+                    }
+
+                HomeInlineExpandedPanel(
+                    modal: inlineExpandedSelection,
+                    summary: summary,
+                    closeAction: {
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                            self.inlineExpandedSelection = nil
+                        }
+                    }
+                )
+                .padding(.bottom, 10)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.82, anchor: .top).combined(with: .move(edge: .bottom)).combined(with: .opacity),
+                    removal: .scale(scale: 0.94, anchor: .top).combined(with: .opacity)
+                ))
             }
         }
         .onAppear {
             titleDraft = eventName
         }
-        .onChange(of: eventName) { newValue in
+        .onChange(of: eventName) { _, newValue in
             if !isEditingTitle {
                 titleDraft = newValue
             }
@@ -1036,6 +1135,52 @@ private struct HomeEventDetailsSheet: View {
         titleDraft = eventName
         isEditingTitle = false
         titleFieldFocused = false
+    }
+
+    private func expandThenSelect(_ selection: HomeDashboardModal) {
+        guard expandingSelection == nil else { return }
+
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+            expandingSelection = selection
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                inlineExpandedSelection = inlineExpandedSelection == selection ? nil : selection
+                expandingSelection = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingRowOrInlinePanel(_ selection: HomeDashboardModal, icon: String, title: String, value: String) -> some View {
+        HomeSettingRow(
+            icon: icon,
+            title: title,
+            value: value,
+            expanded: expandingSelection == selection || inlineExpandedSelection == selection
+        ) {
+            expandThenSelect(selection)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineChildPanel(_ selection: HomeDashboardModal) -> some View {
+        if inlineExpandedSelection == selection {
+            HomeInlineExpandedPanel(
+                modal: selection,
+                summary: summary,
+                closeAction: {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                        inlineExpandedSelection = nil
+                    }
+                }
+            )
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.94, anchor: .top).combined(with: .opacity),
+                removal: .scale(scale: 0.96, anchor: .top).combined(with: .opacity)
+            ))
+        }
     }
 }
 
@@ -1090,6 +1235,203 @@ private struct GuestLimitSheet: View {
                         .font(.satoshi(.title3, weight: .medium))
                         .foregroundStyle(.white.opacity(0.48))
                 }
+            }
+        }
+    }
+}
+
+private struct HomeInlineExpandedPanel: View {
+    let modal: HomeDashboardModal
+    let summary: HomeEventSummary
+    let closeAction: () -> Void
+
+    @State private var focusedGuestLimit = 10
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: icon)
+                    .font(.satoshi(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.satoshi(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                    Text(value)
+                        .font(.satoshi(size: 17, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text(description)
+                        .font(.satoshi(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button(action: closeAction) {
+                    Image(systemName: "chevron.up")
+                        .font(.satoshi(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.48))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HomeDivider()
+            content
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#1D2027"), Color(hex: "#171922")],
+                startPoint: .top,
+                endPoint: .bottom
+            ),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch modal {
+        case .guests:
+            GuestFocusedSelector(selectedLimit: $focusedGuestLimit)
+        case .ended:
+            HStack {
+                SelectablePill("Choose a date", selected: true)
+                SelectablePill("When I decide", selected: false)
+            }
+        case .reveal:
+            inlinePills(["During", "After", "12 hours after", "24 hours after"], selected: summary.reveal)
+        case .filter:
+            HStack(spacing: 12) {
+                CompactFilterCard(title: "None", selected: summary.filter == "None", warm: false)
+                CompactFilterCard(title: "Disposable Film", selected: summary.filter != "None", warm: true)
+            }
+        case .photos:
+            inlinePills(["5", "10", "15", "20", "25"], selected: "\(summary.photosPerPerson)")
+        case .details, .share:
+            EmptyView()
+        }
+    }
+
+    private var guestLimitFallback: Int {
+        max(summary.guestLimit, 10)
+    }
+
+    private func inlinePills(_ options: [String], selected: String) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(options, id: \.self) { option in
+                SelectablePill(option, selected: option == selected)
+            }
+        }
+    }
+
+    private var icon: String {
+        switch modal {
+        case .guests: return "person.2"
+        case .ended: return "calendar"
+        case .reveal: return "hourglass"
+        case .filter: return "photo"
+        case .photos: return "camera"
+        case .details, .share: return "chevron.right"
+        }
+    }
+
+    private var title: String {
+        switch modal {
+        case .guests: return "Number of Guests"
+        case .ended: return "Ending"
+        case .reveal: return "Reveal Photos"
+        case .filter: return "Filter"
+        case .photos: return "Photos per Person"
+        case .details, .share: return ""
+        }
+    }
+
+    private var value: String {
+        switch modal {
+        case .guests: return "Up to \(focusedGuestLimit) participants"
+        case .ended: return summary.endedText
+        case .reveal: return summary.reveal
+        case .filter: return summary.filter
+        case .photos: return "\(summary.photosPerPerson) photos"
+        case .details, .share: return ""
+        }
+    }
+
+    private var description: String {
+        switch modal {
+        case .guests:
+            return "Upgrade at any time, even after publishing."
+        case .ended:
+            return "Choose when the camera locks for submissions."
+        case .reveal:
+            return "Set when photos become visible in the gallery."
+        case .filter:
+            return "Set the visual style for POV Camera photos."
+        case .photos:
+            return "Set how many photos each guest can capture."
+        case .details, .share:
+            return ""
+        }
+    }
+}
+
+private struct GuestFocusedSelector: View {
+    @Binding var selectedLimit: Int
+
+    private let guestLevels = [10, 25, 50, 75, 100, 150, 250]
+
+    private var selectedIndex: Int {
+        guestLevels.firstIndex(of: selectedLimit) ?? 0
+    }
+
+    private var priceText: String {
+        selectedLimit == 10 ? "FREE" : "$\(max(selectedIndex, 1) * 5)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SegmentedSelectionBar(
+                options: guestLevels,
+                filledSegments: selectedIndex + 1,
+                selectedValue: selectedLimit
+            ) { level in
+                selectedLimit = level
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Up to \(selectedLimit)")
+                    .font(.satoshi(size: 22, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+
+                Spacer()
+
+                Text(priceText)
+                    .font(.satoshi(size: 18, weight: .black))
+                    .tracking(2)
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+
+            if selectedLimit > 10 {
+                Text("Each increase unlocks a larger guest tier and requires payment before publishing.")
+                    .font(.satoshi(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear {
+            if !guestLevels.contains(selectedLimit) {
+                selectedLimit = 10
             }
         }
     }
@@ -1679,19 +2021,16 @@ private struct HomeChildOverlayContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ScrollView {
-            content
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 20)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: proxy.size.height)
-                    }
-                )
-        }
-        .scrollIndicators(.hidden)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        content
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 20)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: proxy.size.height)
+                }
+            )
+            .frame(maxWidth: .infinity, alignment: .top)
         .background(
             LinearGradient(
                 colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
@@ -1705,6 +2044,90 @@ private struct HomeChildOverlayContainer<Content: View>: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .shadow(color: .black.opacity(0.32), radius: 24, x: 0, y: 16)
+        .padding(.horizontal, 0)
+    }
+}
+
+private struct HomeDetailsCoverSection: View {
+    let summary: HomeEventSummary
+    let editAction: () -> Void
+    let photoAction: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [Color(hex: "#887B6E"), Color(hex: "#5A5858")],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(spacing: 0) {
+                HStack {
+                    HStack(spacing: 7) {
+                        Text("Cover")
+                            .font(.satoshi(size: 16, weight: .bold))
+                        Image(systemName: "chevron.right")
+                            .font(.satoshi(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white.opacity(0.78))
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 9))
+
+                    Spacer()
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .zIndex(1)
+
+                ZStack {
+                    Phone3DSceneView(
+                        eventName: summary.eventName,
+                        angle: 180,
+                        warmReflection: false
+                    )
+                    .frame(width: 218, height: 258)
+                    .offset(x: 6)
+
+                    HStack {
+                        Spacer()
+
+                        VStack(spacing: 18) {
+                            detailCoverTool(icon: "pencil", title: "Edit", action: editAction)
+                            detailCoverTool(icon: "photo", title: "Photo", action: photoAction)
+                        }
+                        .padding(.trailing, 12)
+                    }
+                }
+                .padding(.top, 0)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 252)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private func detailCoverTool(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.satoshi(size: 21, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(width: 46, height: 46)
+                    .background(Color.black.opacity(0.22), in: Circle())
+
+                Text(title)
+                    .font(.satoshi(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.76))
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 }
 
@@ -1712,35 +2135,41 @@ private struct HomeSheetContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.18)
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
 
-            ScrollView {
-                content
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
-                    .padding(.bottom, 28)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: proxy.size.height)
-                        }
-                    )
-            }
-            .scrollIndicators(.hidden)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay(
+                ScrollView {
+                    content
+                        .padding(.horizontal, 20)
+                        .padding(.top, max(proxy.safeAreaInsets.top - 8, 6))
+                        .padding(.bottom, max(proxy.safeAreaInsets.bottom, 14))
+                        .background(
+                            GeometryReader { contentProxy in
+                                Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: contentProxy.size.height)
+                            }
+                        )
+                }
+                .scrollIndicators(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(Color.white.opacity(0.11), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 28))
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28)
+                            .stroke(Color.white.opacity(0.11), lineWidth: 1)
+                    )
+                    .allowsHitTesting(false)
+                    .zIndex(-1)
+            }
         }
     }
 }
@@ -1853,22 +2282,31 @@ private struct HomeSettingRow: View {
     let icon: String
     let title: String
     let value: String
+    let expanded: Bool
     let action: () -> Void
+
+    init(icon: String, title: String, value: String, expanded: Bool = false, action: @escaping () -> Void) {
+        self.icon = icon
+        self.title = title
+        self.value = value
+        self.expanded = expanded
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.satoshi(.title3, weight: .medium))
+                    .font(.satoshi(size: 19, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.satoshi(.headline, weight: .bold))
+                        .font(.satoshi(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                     Text(value)
-                        .font(.satoshi(.title3, weight: .bold))
+                        .font(.satoshi(size: 16, weight: .medium))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
@@ -1877,13 +2315,25 @@ private struct HomeSettingRow: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.satoshi(.title2, weight: .medium))
+                    .font(.satoshi(size: 21, weight: .medium))
                     .foregroundStyle(.white.opacity(0.38))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
             }
-            .frame(height: 74)
+            .padding(.horizontal, expanded ? 12 : 0)
+            .frame(height: expanded ? 76 : 58)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(expanded ? Color.white.opacity(0.08) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(expanded ? Color.white.opacity(0.12) : Color.clear, lineWidth: 1)
+            )
+            .scaleEffect(expanded ? 1.015 : 1, anchor: .center)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: expanded)
     }
 }
 
@@ -2022,6 +2472,44 @@ private struct FilterCard: View {
     }
 }
 
+private struct CompactFilterCard: View {
+    let title: String
+    let selected: Bool
+    let warm: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 9)
+                .fill(
+                    LinearGradient(
+                        colors: warm ? [Color(hex: "#C48478"), Color(hex: "#2E246E")] : [Color(hex: "#6F5A58"), Color(hex: "#31343B")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.78))
+                        .frame(width: 58, height: 72)
+                }
+                .frame(height: 104)
+
+            Text(title)
+                .font(.satoshi(size: 14, weight: .black))
+                .foregroundStyle(selected ? Color(hex: "#9A90FF") : .white.opacity(0.58))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(selected ? Color(hex: "#282154") : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(selected ? Color(hex: "#554DE8").opacity(0.7) : Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
 private struct SharePreviewCard: View {
     let summary: HomeEventSummary
     let qrCodeImage: UIImage?
@@ -2130,77 +2618,21 @@ private struct POVDashboardLayout: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let heroHeight = max(CGFloat(515), proxy.size.height - 190)
-            let phoneHeight = min(CGFloat(350), max(CGFloat(295), heroHeight * 0.56))
+            let heroHeight = max(CGFloat(574), proxy.size.height - 256)
+            let phoneHeight = min(CGFloat(368), max(CGFloat(302), heroHeight * 0.55))
+            let topInset = max(proxy.safeAreaInsets.top, 18)
 
-            VStack(spacing: 10) {
-                ZStack {
-                    LinearGradient(
-                        colors: [Color(hex: "#806552"), Color(hex: "#3D2F28"), Color(hex: "#0B0908")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .opacity(phoneShowingBack ? 0 : 1)
+            VStack(spacing: 12) {
+                homeHeroCard(phoneHeight: phoneHeight)
+                    .frame(height: heroHeight)
 
-                    LinearGradient(
-                        colors: [Color(hex: "#111635"), Color(hex: "#34105A"), Color(hex: "#17071E")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .opacity(phoneShowingBack ? 1 : 0)
-
-                    VStack(spacing: 9) {
-                        Spacer().frame(height: 18)
-
-                        Text(eventName)
-                            .font(.satoshi(size: 26, weight: .black))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
-
-                        Text(subtitle)
-                            .font(.satoshi(.subheadline, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
-
-                        SwipeablePhoneMockup(
-                            eventName: eventName,
-                            showingBack: $phoneShowingBack,
-                            dragOffset: $dragOffset,
-                            restingAngle: $phoneRestingAngle
-                        )
-                        .frame(height: phoneHeight)
-                        .padding(.top, 2)
-
-                        Text(statusText)
-                            .font(.satoshi(.footnote, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
-
-                        HStack(spacing: 9) {
-                            dashboardToolButton(systemName: phoneShowingBack ? "photo.on.rectangle.angled" : "camera", action: phoneShowingBack ? galleryAction : cameraAction)
-                            dashboardToolButton(systemName: "pencil", action: editAction)
-                            dashboardToolButton(systemName: "qrcode", action: qrAction)
-                            dashboardToolButton(systemName: "square.and.arrow.up", action: shareAction)
-                        }
-                        .padding(.horizontal, 10)
-
-                        Capsule()
-                            .fill(.white)
-                            .frame(width: 112, height: 3)
-                            .opacity(0.86)
-                            .padding(.bottom, 8)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .frame(maxWidth: .infinity)
-                .frame(height: heroHeight)
-                .animation(.easeInOut(duration: 1.15), value: phoneShowingBack)
-
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     Button(action: scheduleAction) {
                         actionRow(
                             icon: "calendar.badge.plus",
                             title: "Schedule a POV Camera",
-                            subtitle: "For parties, planned events, & weddings",
-                            background: Color(hex: "#5C4EEA"),
+                            subtitle: "For weddings, parties, & planned events",
+                            background: Color(hex: "#5C55E8"),
                             foreground: .white
                         )
                     }
@@ -2210,8 +2642,8 @@ private struct POVDashboardLayout: View {
                         actionRow(
                             icon: "bolt.fill",
                             title: "Instant POV Camera",
-                            subtitle: "For friends, trips, & when you're together",
-                            background: Color(hex: "#2D3038"),
+                            subtitle: "For right now! Start your POV immediately",
+                            background: Color(hex: "#41454D"),
                             foreground: .white
                         )
                     }
@@ -2220,28 +2652,124 @@ private struct POVDashboardLayout: View {
                 .padding(.horizontal, 16)
 
                 bottomBar
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
             }
+            .padding(.top, topInset + 40)
+            .padding(.bottom, 4)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-            .background(Color.black)
+            .background(Color(hex: "#11120D"))
         }
-        .background(Color.black)
+        .background(Color(hex: "#11120D"))
         .ignoresSafeArea(edges: .top)
         .onAppear {
-            phoneShowingBack = false
-            phoneRestingAngle = 0
+            phoneRestingAngle = 180
+            phoneShowingBack = true
             dragOffset = 0
         }
+    }
+
+    @ViewBuilder
+    private func homeHeroCard(phoneHeight: CGFloat) -> some View {
+        let heroGradient = LinearGradient(
+            colors: [Color(hex: "#8C8073"), Color(hex: "#69635F"), Color(hex: "#555152")],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                Text("HOSTING")
+                    .font(.satoshi(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .tracking(1.3)
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+
+                Spacer()
+            }
+            .padding(.top, 10)
+            .padding(.horizontal, 12)
+
+            ZStack {
+                Text(eventName)
+                    .font(.satoshi(size: 29, weight: .italic))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+
+                HStack {
+                    Spacer()
+
+                    Button(action: editAction) {
+                        Image(systemName: "pencil")
+                            .font(.satoshi(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 52, height: 38)
+                            .background(Color.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 22)
+
+            Text(subtitle)
+                .font(.satoshi(size: 18, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.top, 8)
+
+            SwipeablePhoneMockup(
+                eventName: eventName,
+                showingBack: $phoneShowingBack,
+                dragOffset: $dragOffset,
+                restingAngle: $phoneRestingAngle
+            )
+            .frame(height: phoneHeight)
+            .padding(.top, 18)
+
+            Text(statusText)
+                .font(.satoshi(size: 17, weight: .medium))
+                .foregroundStyle(.white.opacity(0.42))
+                .multilineTextAlignment(.center)
+                .padding(.top, 16)
+                .padding(.horizontal, 20)
+
+            HStack(spacing: 14) {
+                dashboardToolButton(systemName: "camera", action: cameraAction)
+                dashboardToolButton(systemName: "square.and.arrow.up", action: shareAction)
+                dashboardToolButton(systemName: "qrcode", action: qrAction)
+            }
+            .padding(.top, 18)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(heroGradient, in: RoundedRectangle(cornerRadius: 34))
+        .overlay(
+            RoundedRectangle(cornerRadius: 34)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
     }
 
     private func dashboardToolButton(systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.satoshi(size: 19, weight: .medium))
-                .foregroundStyle(.white.opacity(0.82))
+                .font(.satoshi(size: 24, weight: .medium))
+                .foregroundStyle(.white.opacity(0.84))
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+                .frame(height: 56)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(systemName))
@@ -2250,57 +2778,64 @@ private struct POVDashboardLayout: View {
     private func actionRow(icon: String, title: String, subtitle: String, background: Color, foreground: Color) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.satoshi(.headline, weight: .bold))
-                .frame(width: 24)
+                .font(.satoshi(size: 26, weight: .bold))
+                .frame(width: 30)
                 .foregroundStyle(foreground.opacity(0.72))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.satoshi(.headline, weight: .black))
+                    .font(.satoshi(size: 20, weight: .bold))
                     .foregroundStyle(foreground)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .minimumScaleFactor(0.84)
                 Text(subtitle)
-                    .font(.satoshi(.caption, weight: .medium))
+                    .font(.satoshi(size: 16, weight: .medium))
                     .foregroundStyle(foreground.opacity(0.62))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .minimumScaleFactor(0.84)
             }
 
             Spacer()
 
             Image(systemName: "arrow.right")
-                .font(.satoshi(.headline, weight: .bold))
+                .font(.satoshi(size: 19, weight: .bold))
                 .foregroundStyle(foreground.opacity(0.74))
         }
-        .padding(.horizontal, 16)
-        .frame(height: 58)
-        .background(background, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 20)
+        .frame(height: 66)
+        .background(background, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 28) {
-            Image(systemName: "plus.square")
-                .font(.satoshi(.title3, weight: .medium))
-                .foregroundStyle(Color(hex: "#8478FF"))
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(Color(hex: "#272052"), in: RoundedRectangle(cornerRadius: 7))
-
-            Image(systemName: "camera")
-                .font(.satoshi(.title3, weight: .medium))
-                .foregroundStyle(.white.opacity(0.35))
-                .frame(maxWidth: .infinity)
-
-            Image(systemName: "person")
-                .font(.satoshi(.title3, weight: .medium))
-                .foregroundStyle(.white.opacity(0.35))
-                .frame(maxWidth: .infinity)
+        HStack(spacing: 0) {
+            bottomTabIcon("plus.square", selected: true)
+            bottomTabIcon("camera", selected: false)
+            bottomTabIcon("gearshape", selected: false)
         }
-        .frame(height: 54)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-        .background(Color.black)
+        .frame(height: 68)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 12)
+        .background(Color(hex: "#11120D"))
+    }
+
+    private func bottomTabIcon(_ systemName: String, selected: Bool) -> some View {
+        Image(systemName: systemName)
+            .font(.satoshi(size: 28, weight: .medium))
+            .foregroundStyle(selected ? Color(hex: "#8A84FF") : Color.white.opacity(0.42))
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(
+                Group {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color(hex: "#302E59"))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 22)
+                                    .stroke(Color(hex: "#5C55E8").opacity(0.35), lineWidth: 1)
+                            )
+                    }
+                }
+            )
     }
 }
 
@@ -2318,8 +2853,8 @@ private struct SwipeablePhoneMockup: View {
                 angle: currentAngle,
                 warmReflection: !showingBack
             )
-                .frame(width: 280, height: 350)
-                .allowsHitTesting(false)
+            .frame(width: 310, height: 380)
+            .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
