@@ -1246,6 +1246,8 @@ private struct HomeInlineExpandedPanel: View {
     let closeAction: () -> Void
 
     @State private var focusedGuestLimit = 10
+    @State private var selectedEndDate = Calendar.current.date(from: DateComponents(year: 2026, month: 5, day: 23, hour: 23, minute: 59)) ?? Date()
+    @State private var visibleEndMonth = Calendar.current.date(from: DateComponents(year: 2026, month: 5, day: 1)) ?? Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1305,10 +1307,10 @@ private struct HomeInlineExpandedPanel: View {
         case .guests:
             GuestFocusedSelector(selectedLimit: $focusedGuestLimit)
         case .ended:
-            HStack {
-                SelectablePill("Choose a date", selected: true)
-                SelectablePill("When I decide", selected: false)
-            }
+            EndingCalendarSelector(
+                selectedDate: $selectedEndDate,
+                visibleMonth: $visibleEndMonth
+            )
         case .reveal:
             inlinePills(["During", "After", "12 hours after", "24 hours after"], selected: summary.reveal)
         case .filter:
@@ -1360,7 +1362,7 @@ private struct HomeInlineExpandedPanel: View {
     private var value: String {
         switch modal {
         case .guests: return "Up to \(focusedGuestLimit) participants"
-        case .ended: return summary.endedText
+        case .ended: return formattedEndDate
         case .reveal: return summary.reveal
         case .filter: return summary.filter
         case .photos: return "\(summary.photosPerPerson) photos"
@@ -1383,6 +1385,156 @@ private struct HomeInlineExpandedPanel: View {
         case .details, .share:
             return ""
         }
+    }
+
+    private var formattedEndDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE d MMM • HH:mm"
+        return "\(formatter.string(from: selectedEndDate)) GMT+8"
+    }
+}
+
+private struct EndingCalendarSelector: View {
+    @Binding var selectedDate: Date
+    @Binding var visibleMonth: Date
+
+    private let calendar = Calendar.current
+    private let weekdays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Button(action: previousMonth) {
+                    Image(systemName: "chevron.left")
+                        .font(.satoshi(size: 21, weight: .bold))
+                        .foregroundStyle(Color(hex: "#8E84FF"))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+
+                Text(monthTitle)
+                    .font(.satoshi(size: 18, weight: .black))
+                    .foregroundStyle(.white)
+
+                Image(systemName: "chevron.right")
+                    .font(.satoshi(size: 16, weight: .bold))
+                    .foregroundStyle(Color(hex: "#8E84FF"))
+
+                Spacer()
+
+                Button(action: nextMonth) {
+                    Image(systemName: "chevron.right")
+                        .font(.satoshi(size: 21, weight: .bold))
+                        .foregroundStyle(Color(hex: "#8E84FF"))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(spacing: 14) {
+                HStack {
+                    ForEach(weekdays, id: \.self) { weekday in
+                        Text(weekday)
+                            .font(.satoshi(size: 12, weight: .black))
+                            .foregroundStyle(.white.opacity(0.44))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 13) {
+                    ForEach(calendarDays, id: \.self) { date in
+                        if let date {
+                            dayButton(for: date)
+                        } else {
+                            Color.clear.frame(height: 34)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Text("Time")
+                    .font(.satoshi(size: 17, weight: .black))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                DatePicker("", selection: $selectedDate, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .colorScheme(.dark)
+                    .tint(Color(hex: "#8E84FF"))
+                    .frame(width: 110)
+                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+            }
+        }
+    }
+
+    private func dayButton(for date: Date) -> some View {
+        let selected = calendar.isDate(date, inSameDayAs: selectedDate)
+        let active = calendar.isDate(date, equalTo: visibleMonth, toGranularity: .month)
+        let day = calendar.component(.day, from: date)
+
+        return Button {
+            selectDay(date)
+        } label: {
+            Text("\(day)")
+                .font(.satoshi(size: 18, weight: .medium))
+                .foregroundStyle(selected ? Color(hex: "#9A90FF") : (active ? .white : .white.opacity(0.16)))
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(
+                    Circle()
+                        .fill(selected ? Color(hex: "#302C5C") : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!active)
+    }
+
+    private var monthTitle: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: visibleMonth)
+    }
+
+    private var calendarDays: [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: visibleMonth),
+              let daysRange = calendar.range(of: .day, in: .month, for: visibleMonth) else {
+            return []
+        }
+
+        let firstDay = monthInterval.start
+        let weekday = calendar.component(.weekday, from: firstDay)
+        let leadingBlankCount = (weekday + 5) % 7
+
+        var days: [Date?] = Array(repeating: nil, count: leadingBlankCount)
+        for day in daysRange {
+            days.append(calendar.date(byAdding: .day, value: day - 1, to: firstDay))
+        }
+
+        while !days.count.isMultiple(of: 7) {
+            days.append(nil)
+        }
+
+        return days
+    }
+
+    private func selectDay(_ date: Date) {
+        let hour = calendar.component(.hour, from: selectedDate)
+        let minute = calendar.component(.minute, from: selectedDate)
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = hour
+        components.minute = minute
+        selectedDate = calendar.date(from: components) ?? date
+    }
+
+    private func previousMonth() {
+        visibleMonth = calendar.date(byAdding: .month, value: -1, to: visibleMonth) ?? visibleMonth
+    }
+
+    private func nextMonth() {
+        visibleMonth = calendar.date(byAdding: .month, value: 1, to: visibleMonth) ?? visibleMonth
     }
 }
 
