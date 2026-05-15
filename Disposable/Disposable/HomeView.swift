@@ -1062,23 +1062,33 @@ private struct HomeEventDetailsSheet: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 8) {
                 if inlineExpandedSelection == nil {
-                    Button(action: dismissAction) {
-                        Text("Dismiss")
-                            .font(.satoshi(size: 18, weight: .black))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 26))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 26)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1.2)
-                            )
+                    VStack(spacing: 0) {
+                        Button(action: dismissAction) {
+                            Text("Dismiss")
+                                .font(.satoshi(size: 18, weight: .black))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 26))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 26)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1.2)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
-                    .background(Color.clear)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#15161E"), Color(hex: "#101119")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .ignoresSafeArea(edges: .bottom)
+                    )
                 }
             }
 
@@ -2292,35 +2302,31 @@ private struct HomeSheetContainer<Content: View>: View {
                 Color.black.opacity(0.18)
                     .ignoresSafeArea()
 
-                ScrollView {
+                VStack(spacing: 0) {
                     content
                         .padding(.horizontal, 20)
                         .padding(.top, max(proxy.safeAreaInsets.top - 8, 6))
-                        .padding(.bottom, max(proxy.safeAreaInsets.bottom, 14))
-                        .background(
-                            GeometryReader { contentProxy in
-                                Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: contentProxy.size.height)
-                            }
-                        )
+                        .padding(.bottom, 10)
                 }
-                .scrollIndicators(.hidden)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    in: RoundedRectangle(cornerRadius: 28)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28)
+                        .stroke(Color.white.opacity(0.11), lineWidth: 1)
+                )
+                .background(
+                    GeometryReader { contentProxy in
+                        Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: contentProxy.size.height)
+                    }
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .ignoresSafeArea(edges: .bottom)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 28)
-                            .stroke(Color.white.opacity(0.11), lineWidth: 1)
-                    )
-                    .allowsHitTesting(false)
-                    .zIndex(-1)
             }
         }
     }
