@@ -119,6 +119,7 @@ struct HomeView: View {
                     .presentationCornerRadius(28)
                     .presentationBackground(Color.clear)
                     .presentationDetents(detents(for: modal))
+                    .interactiveDismissDisabled(true)
             }
             .alert("Event Deleted", isPresented: $showEventDeletedAlert) {
                 Button("OK") { leaveEvent() }
@@ -318,27 +319,35 @@ struct HomeView: View {
             GuestLimitSheet(
                 summary: summary,
                 selectedLimit: $selectedGuestLimit,
-                backAction: { selectedHomeModal = .details }
+                backAction: { selectedHomeModal = .details },
+                dismissAction: { selectedHomeModal = nil }
             )
         case .ended:
-            EventEndSheet(summary: summary, backAction: { selectedHomeModal = .details })
+            EventEndSheet(
+                summary: summary,
+                backAction: { selectedHomeModal = .details },
+                dismissAction: { selectedHomeModal = nil }
+            )
         case .reveal:
             RevealPhotosSheet(
                 summary: summary,
                 selectedReveal: $selectedRevealOption,
-                backAction: { selectedHomeModal = .details }
+                backAction: { selectedHomeModal = .details },
+                dismissAction: { selectedHomeModal = nil }
             )
         case .filter:
             FilterSelectionSheet(
                 summary: summary,
                 selectedFilter: $selectedFilterOption,
-                backAction: { selectedHomeModal = .details }
+                backAction: { selectedHomeModal = .details },
+                dismissAction: { selectedHomeModal = nil }
             )
         case .photos:
             PhotosPerPersonSheet(
                 summary: summary,
                 selectedPhotos: $selectedPhotosPerPerson,
-                backAction: { selectedHomeModal = .details }
+                backAction: { selectedHomeModal = .details },
+                dismissAction: { selectedHomeModal = nil }
             )
         case .share:
             ShareEventCardSheet(
@@ -347,21 +356,32 @@ struct HomeView: View {
                 selectedTemplate: $selectedShareTemplate,
                 selectedBackground: $selectedShareBackground,
                 selectedQRColor: $selectedShareQRColor,
+                dismissAction: { selectedHomeModal = nil },
                 shareAction: shareSelectedQRCodeTemplate
             )
         }
     }
 
     private func detents(for modal: HomeDashboardModal) -> Set<PresentationDetent> {
+        [.height(contentHeight(for: modal))]
+    }
+
+    private func contentHeight(for modal: HomeDashboardModal) -> CGFloat {
         switch modal {
         case .details:
-            return [.fraction(0.58), .large]
-        case .share:
-            return [.large]
+            return 640
+        case .guests:
+            return 560
         case .ended:
-            return [.fraction(0.72), .large]
-        default:
-            return [.fraction(0.5), .medium]
+            return 760
+        case .reveal:
+            return 430
+        case .filter:
+            return 500
+        case .photos:
+            return 450
+        case .share:
+            return 780
         }
     }
 
@@ -830,14 +850,7 @@ private struct HomeEventDetailsSheet: View {
                     .foregroundStyle(.white.opacity(0.44))
                     .padding(.top, 4)
 
-                Button(action: dismissAction) {
-                    Text("Dismiss")
-                        .font(.satoshi(.title3, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 62)
-                        .background(Color(hex: "#574BE7"), in: RoundedRectangle(cornerRadius: 15))
-                }
+                Spacer(minLength: 4)
             }
         }
     }
@@ -847,6 +860,7 @@ private struct GuestLimitSheet: View {
     let summary: HomeEventSummary
     @Binding var selectedLimit: Int
     let backAction: () -> Void
+    let dismissAction: () -> Void
 
     private let guestLevels = [10, 25, 50, 75, 100, 150, 250]
 
@@ -860,7 +874,8 @@ private struct GuestLimitSheet: View {
             title: "Number of Guests",
             value: "Up to \(selectedLimit) participants",
             description: "Pricing scales for more guests. Upgrade at any time, even after publishing. Guests can participate without downloading the app by scanning a QR code or opening a link.",
-            backAction: backAction
+            backAction: backAction,
+            dismissAction: dismissAction
         ) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 3) {
@@ -916,6 +931,7 @@ private struct RevealPhotosSheet: View {
     let summary: HomeEventSummary
     @Binding var selectedReveal: String
     let backAction: () -> Void
+    let dismissAction: () -> Void
 
     private let options = ["During", "After", "12 hours after", "24 hours after"]
 
@@ -925,7 +941,8 @@ private struct RevealPhotosSheet: View {
             title: "Reveal Photos",
             value: selectedReveal,
             description: "Adjust the waiting period for when the photos are revealed in the gallery after the end date.",
-            backAction: backAction
+            backAction: backAction,
+            dismissAction: dismissAction
         ) {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(options, id: \.self) { option in
@@ -944,6 +961,7 @@ private struct RevealPhotosSheet: View {
 private struct EventEndSheet: View {
     let summary: HomeEventSummary
     let backAction: () -> Void
+    let dismissAction: () -> Void
 
     var body: some View {
         HomeExpandedSheet(
@@ -951,7 +969,8 @@ private struct EventEndSheet: View {
             title: "Ended",
             value: summary.endedText,
             description: "Customize when the camera will lock and submissions will no longer be allowed.",
-            backAction: backAction
+            backAction: backAction,
+            dismissAction: dismissAction
         ) {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 12) {
@@ -996,6 +1015,7 @@ private struct FilterSelectionSheet: View {
     let summary: HomeEventSummary
     @Binding var selectedFilter: String
     let backAction: () -> Void
+    let dismissAction: () -> Void
 
     var body: some View {
         HomeExpandedSheet(
@@ -1003,7 +1023,8 @@ private struct FilterSelectionSheet: View {
             title: "Filter",
             value: selectedFilter,
             description: "Adjust the look and style of each photo taken at the event. You can adjust this even after the event.",
-            backAction: backAction
+            backAction: backAction,
+            dismissAction: dismissAction
         ) {
             HStack(spacing: 14) {
                 Button {
@@ -1028,6 +1049,7 @@ private struct PhotosPerPersonSheet: View {
     let summary: HomeEventSummary
     @Binding var selectedPhotos: Int
     let backAction: () -> Void
+    let dismissAction: () -> Void
 
     private let photoOptions = [5, 10, 15, 20, 25]
 
@@ -1037,7 +1059,8 @@ private struct PhotosPerPersonSheet: View {
             title: "Photos per Person",
             value: "\(selectedPhotos) photos",
             description: "Set how many photos each guest can capture during the event.",
-            backAction: backAction
+            backAction: backAction,
+            dismissAction: dismissAction
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 3) {
@@ -1072,13 +1095,12 @@ private struct PhotosPerPersonSheet: View {
 }
 
 private struct ShareEventCardSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
     let summary: HomeEventSummary
     let qrCodeImage: UIImage?
     @Binding var selectedTemplate: QRShareTemplateStyle
     @Binding var selectedBackground: QRShareBackground
     @Binding var selectedQRColor: QRShareColor
+    let dismissAction: () -> Void
     let shareAction: () -> Void
 
     var body: some View {
@@ -1092,13 +1114,12 @@ private struct ShareEventCardSheet: View {
 
             VStack(spacing: 20) {
                 HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
+                    Button(action: dismissAction) {
+                        Image(systemName: "chevron.down")
                             .font(.satoshi(.title, weight: .regular))
                             .foregroundStyle(.white.opacity(0.72))
                             .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.08), in: Circle())
                     }
                     .buttonStyle(.plain)
 
@@ -1417,6 +1438,7 @@ private struct HomeExpandedSheet<Content: View>: View {
     let value: String
     let description: String
     let backAction: (() -> Void)?
+    let dismissAction: (() -> Void)?
     @ViewBuilder let content: Content
 
     init(
@@ -1425,6 +1447,7 @@ private struct HomeExpandedSheet<Content: View>: View {
         value: String,
         description: String,
         backAction: (() -> Void)? = nil,
+        dismissAction: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.icon = icon
@@ -1432,6 +1455,7 @@ private struct HomeExpandedSheet<Content: View>: View {
         self.value = value
         self.description = description
         self.backAction = backAction
+        self.dismissAction = dismissAction
         self.content = content()
     }
 
@@ -1471,10 +1495,16 @@ private struct HomeExpandedSheet<Content: View>: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.down")
-                        .font(.satoshi(.title3, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.52))
-                        .padding(.top, 4)
+                    if let dismissAction {
+                        Button(action: dismissAction) {
+                            Image(systemName: "chevron.down")
+                                .font(.satoshi(.title3, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .frame(width: 42, height: 42)
+                                .background(Color.white.opacity(0.08), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 HomeDivider()
