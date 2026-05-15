@@ -38,10 +38,13 @@ struct HomeView: View {
     @State private var showEventDeletedAlert = false
     @State private var navigateToJoinFromQR = false
     @State private var showPreRevealSheet = false
-    @State private var selectedHomeModal: HomeDashboardModal?
+    @State private var isHomeModalPresented = false
+    @State private var currentHomeModal: HomeDashboardModal = .details
+    @State private var homeModalMeasuredHeight: CGFloat = 640
 
     @State private var eventEndTime: Date = Date()
     @State private var revealSetting: String = "Immediately"
+    @State private var homeEventName = "February 4 POV"
     @State private var phoneShowingBack = false
     @State private var hasInitializedDashboardControls = false
     @State private var selectedGuestLimit = 10
@@ -80,6 +83,7 @@ struct HomeView: View {
             }
             .onAppear {
                 restoreEventState()
+                syncHomeEventName()
                 phoneShowingBack = false
                 initializeDashboardControlsIfNeeded()
 
@@ -113,12 +117,14 @@ struct HomeView: View {
                     voiceNotesEnabled: eventData?["allowVoiceNotes"] as? Bool ?? true
                 )
             }
-            .sheet(item: $selectedHomeModal) { modal in
-                homeModalView(for: modal)
+            .sheet(isPresented: $isHomeModalPresented, onDismiss: {
+                currentHomeModal = .details
+            }) {
+                homeModalView(for: currentHomeModal)
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(28)
                     .presentationBackground(Color.clear)
-                    .presentationDetents(detents(for: modal))
+                    .presentationDetents(homeModalDetents)
                     .interactiveDismissDisabled(true)
             }
             .alert("Event Deleted", isPresented: $showEventDeletedAlert) {
@@ -257,17 +263,17 @@ struct HomeView: View {
 
     private func activePOVDashboard(_ data: [String: Any]) -> some View {
         POVDashboardLayout(
-            eventName: data["eventName"] as? String ?? "Tetamu POV",
+            eventName: homeEventName,
             subtitle: subtitle(for: data),
             statusText: countdownText.isEmpty ? "Guests are capturing memories" : "Reveal in \(countdownText)",
             phoneShowingBack: $phoneShowingBack,
-            scheduleAction: { selectedHomeModal = .details },
-            instantAction: { selectedHomeModal = .details },
-            galleryAction: { selectedHomeModal = .details },
-            cameraAction: { selectedHomeModal = .details },
-            editAction: { selectedHomeModal = .details },
-            qrAction: { selectedHomeModal = .share },
-            shareAction: { selectedHomeModal = .share }
+            scheduleAction: { presentHomeModal(.details) },
+            instantAction: { presentHomeModal(.details) },
+            galleryAction: { presentHomeModal(.details) },
+            cameraAction: { presentHomeModal(.details) },
+            editAction: { presentHomeModal(.details) },
+            qrAction: { presentHomeModal(.share) },
+            shareAction: { presentHomeModal(.share) }
         )
         .overlay(alignment: .topTrailing) {
             Button(action: { showEndEventAlert = true }) {
@@ -290,64 +296,97 @@ struct HomeView: View {
 
     private var emptyHostDashboard: some View {
         POVDashboardLayout(
-            eventName: "February 4 POV",
+            eventName: homeEventName,
             subtitle: "Share with friends!",
             statusText: "Ended 3 months ago",
             phoneShowingBack: $phoneShowingBack,
-            scheduleAction: { selectedHomeModal = .details },
-            instantAction: { selectedHomeModal = .details },
-            galleryAction: { selectedHomeModal = .details },
-            cameraAction: { selectedHomeModal = .details },
-            editAction: { selectedHomeModal = .details },
-            qrAction: { selectedHomeModal = .share },
-            shareAction: { selectedHomeModal = .share }
+            scheduleAction: { presentHomeModal(.details) },
+            instantAction: { presentHomeModal(.details) },
+            galleryAction: { presentHomeModal(.details) },
+            cameraAction: { presentHomeModal(.details) },
+            editAction: { presentHomeModal(.details) },
+            qrAction: { presentHomeModal(.share) },
+            shareAction: { presentHomeModal(.share) }
         )
     }
 
     @ViewBuilder
     private func homeModalView(for modal: HomeDashboardModal) -> some View {
+        ZStack(alignment: .top) {
+            HomeEventDetailsSheet(
+                summary: dashboardSummary(),
+                eventName: $homeEventName,
+                saveEventNameAction: saveEventName
+            ) { selection in
+                navigateHomeModal(to: selection)
+            } dismissAction: {
+                dismissHomeModal()
+            }
+            .opacity(modal == .details ? 1 : 0.34)
+            .saturation(modal == .details ? 1 : 0.45)
+            .allowsHitTesting(modal == .details)
+
+            if modal != .details {
+                Color.black.opacity(0.16)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                homeModalPage(for: modal)
+                    .id(modal.id)
+                    .transition(childOverlayTransition)
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.88), value: modal)
+        .onPreferenceChange(HomeSheetHeightPreferenceKey.self) { height in
+            guard height > 0 else { return }
+            let detentHeight = clampedHomeModalHeight(height)
+            guard abs(homeModalMeasuredHeight - detentHeight) > 1 else { return }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
+                homeModalMeasuredHeight = detentHeight
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func homeModalPage(for modal: HomeDashboardModal) -> some View {
         let summary = dashboardSummary()
 
         switch modal {
         case .details:
-            HomeEventDetailsSheet(summary: summary) { selection in
-                selectedHomeModal = selection
-            } dismissAction: {
-                selectedHomeModal = nil
-            }
+            EmptyView()
         case .guests:
             GuestLimitSheet(
                 summary: summary,
                 selectedLimit: $selectedGuestLimit,
-                backAction: { selectedHomeModal = .details },
-                dismissAction: { selectedHomeModal = nil }
+                backAction: { navigateHomeModal(to: .details) },
+                dismissAction: dismissHomeModal
             )
         case .ended:
             EventEndSheet(
                 summary: summary,
-                backAction: { selectedHomeModal = .details },
-                dismissAction: { selectedHomeModal = nil }
+                backAction: { navigateHomeModal(to: .details) },
+                dismissAction: dismissHomeModal
             )
         case .reveal:
             RevealPhotosSheet(
                 summary: summary,
                 selectedReveal: $selectedRevealOption,
-                backAction: { selectedHomeModal = .details },
-                dismissAction: { selectedHomeModal = nil }
+                backAction: { navigateHomeModal(to: .details) },
+                dismissAction: dismissHomeModal
             )
         case .filter:
             FilterSelectionSheet(
                 summary: summary,
                 selectedFilter: $selectedFilterOption,
-                backAction: { selectedHomeModal = .details },
-                dismissAction: { selectedHomeModal = nil }
+                backAction: { navigateHomeModal(to: .details) },
+                dismissAction: dismissHomeModal
             )
         case .photos:
             PhotosPerPersonSheet(
                 summary: summary,
                 selectedPhotos: $selectedPhotosPerPerson,
-                backAction: { selectedHomeModal = .details },
-                dismissAction: { selectedHomeModal = nil }
+                backAction: { navigateHomeModal(to: .details) },
+                dismissAction: dismissHomeModal
             )
         case .share:
             ShareEventCardSheet(
@@ -356,14 +395,45 @@ struct HomeView: View {
                 selectedTemplate: $selectedShareTemplate,
                 selectedBackground: $selectedShareBackground,
                 selectedQRColor: $selectedShareQRColor,
-                dismissAction: { selectedHomeModal = nil },
+                dismissAction: dismissHomeModal,
                 shareAction: shareSelectedQRCodeTemplate
             )
         }
     }
 
-    private func detents(for modal: HomeDashboardModal) -> Set<PresentationDetent> {
-        [.height(contentHeight(for: modal))]
+    private var childOverlayTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .scale(scale: 0.96, anchor: .top).combined(with: .opacity)
+        )
+    }
+
+    private func presentHomeModal(_ modal: HomeDashboardModal) {
+        currentHomeModal = modal
+        homeModalMeasuredHeight = contentHeight(for: modal)
+        isHomeModalPresented = true
+    }
+
+    private func navigateHomeModal(to modal: HomeDashboardModal) {
+        guard currentHomeModal != modal else { return }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            homeModalMeasuredHeight = contentHeight(for: modal)
+            currentHomeModal = modal
+        }
+    }
+
+    private func dismissHomeModal() {
+        isHomeModalPresented = false
+    }
+
+    private var homeModalDetents: Set<PresentationDetent> {
+        [.height(homeModalMeasuredHeight)]
+    }
+
+    private func clampedHomeModalHeight(_ height: CGFloat) -> CGFloat {
+        let minimumHeight: CGFloat = 360
+        let maximumHeight = UIScreen.main.bounds.height * 0.86
+        return min(max(height, minimumHeight), maximumHeight)
     }
 
     private func contentHeight(for modal: HomeDashboardModal) -> CGFloat {
@@ -387,11 +457,10 @@ struct HomeView: View {
 
     private func dashboardSummary() -> HomeEventSummary {
         let data = eventData ?? [:]
-        let eventName = data["eventName"] as? String ?? "February 4 POV"
         let endDate = endDateText(from: data)
 
         return HomeEventSummary(
-            eventName: eventName,
+            eventName: homeEventName,
             guestLimit: selectedGuestLimit,
             photosPerPerson: selectedPhotosPerPerson,
             reveal: selectedRevealOption,
@@ -403,6 +472,7 @@ struct HomeView: View {
     private func initializeDashboardControlsIfNeeded() {
         guard !hasInitializedDashboardControls else { return }
         let data = eventData ?? [:]
+        syncHomeEventName()
         selectedPhotosPerPerson = data["numberOfPhotos"] as? Int ?? 15
         selectedGuestLimit = data["guestLimit"] as? Int ?? max(participantsCount, 10)
         selectedRevealOption = revealTitle(from: data["reveal"] as? String)
@@ -536,10 +606,9 @@ struct HomeView: View {
 
     private func shareQRCode() {
         guard let qrCodeImage = qrCodeImage,
-              let eventName = eventData?["eventName"] as? String,
               let eventId = eventData?["eventId"] as? String else { return }
 
-        let message = "Scan this QR code to join \"\(eventName)\" or enter event code \"\(eventId)\" in Tetamu."
+        let message = "Scan this QR code to join \"\(homeEventName)\" or enter event code \"\(eventId)\" in Tetamu."
         let activityVC = UIActivityViewController(activityItems: [message, qrCodeImage], applicationActivities: nil)
 
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -605,7 +674,44 @@ struct HomeView: View {
 
             self.eventData = decodedData
             self.isInEvent = UserDefaults.standard.bool(forKey: "isInEvent")
+            syncHomeEventName()
         }
+    }
+
+    private func syncHomeEventName() {
+        if let storedName = eventData?["eventName"] as? String,
+           !storedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            homeEventName = storedName
+        } else if homeEventName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            homeEventName = "February 4 POV"
+        }
+    }
+
+    private func saveEventName(_ newValue: String) {
+        let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = trimmedName.isEmpty ? "February 4 POV" : trimmedName
+
+        homeEventName = resolvedName
+        eventData?["eventName"] = resolvedName
+        persistCurrentEventDataLocally()
+
+        guard let eventId = eventData?["eventId"] as? String else { return }
+        Firestore.firestore().collection("events").document(eventId).updateData([
+            "eventName": resolvedName
+        ])
+    }
+
+    private func persistCurrentEventDataLocally() {
+        guard let eventData else { return }
+
+        var serializable = eventData
+        if let timestamp = serializable["startTime"] as? Timestamp {
+            serializable["startTime"] = timestamp.dateValue().timeIntervalSince1970
+        }
+
+        guard let encodedData = try? JSONSerialization.data(withJSONObject: serializable, options: []) else { return }
+        UserDefaults.standard.set(encodedData, forKey: "currentEventData")
+        UserDefaults.standard.set(isInEvent, forKey: "isInEvent")
     }
 
     private func endEvent() {
@@ -675,6 +781,14 @@ private enum HomeDashboardModal: Identifiable {
         case .photos: return "photos"
         case .share: return "share"
         }
+    }
+}
+
+private struct HomeSheetHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -784,8 +898,14 @@ private enum QRShareDisplayMode {
 
 private struct HomeEventDetailsSheet: View {
     let summary: HomeEventSummary
+    @Binding var eventName: String
+    let saveEventNameAction: (String) -> Void
     let selectAction: (HomeDashboardModal) -> Void
     let dismissAction: () -> Void
+
+    @State private var isEditingTitle = false
+    @State private var titleDraft = ""
+    @FocusState private var titleFieldFocused: Bool
 
     var body: some View {
         HomeSheetContainer {
@@ -802,17 +922,53 @@ private struct HomeEventDetailsSheet: View {
                     Spacer()
 
                     HStack(spacing: 10) {
-                        Text(summary.eventName)
-                            .font(.satoshi(size: 27, weight: .black))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                        if isEditingTitle {
+                            TextField("Event name", text: $titleDraft)
+                                .font(.satoshi(size: 24, weight: .black))
+                                .foregroundStyle(.white)
+                                .textInputAutocapitalization(.words)
+                                .autocorrectionDisabled()
+                                .focused($titleFieldFocused)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    commitTitleEdit()
+                                }
+                        } else {
+                            Text(summary.eventName)
+                                .font(.satoshi(size: 27, weight: .black))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                        }
 
-                        Image(systemName: "pencil")
-                            .font(.satoshi(.headline, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .frame(width: 46, height: 34)
-                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                        if isEditingTitle {
+                            Button(action: commitTitleEdit) {
+                                Image(systemName: "checkmark")
+                                    .font(.satoshi(.headline, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 38, height: 34)
+                                    .background(Color(hex: "#574BE7"), in: RoundedRectangle(cornerRadius: 11))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: cancelTitleEdit) {
+                                Image(systemName: "xmark")
+                                    .font(.satoshi(.headline, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .frame(width: 38, height: 34)
+                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Button(action: beginTitleEdit) {
+                                Image(systemName: "pencil")
+                                    .font(.satoshi(.headline, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.6))
+                                    .frame(width: 46, height: 34)
+                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
 
                     Spacer()
@@ -853,6 +1009,33 @@ private struct HomeEventDetailsSheet: View {
                 Spacer(minLength: 4)
             }
         }
+        .onAppear {
+            titleDraft = eventName
+        }
+        .onChange(of: eventName) { newValue in
+            if !isEditingTitle {
+                titleDraft = newValue
+            }
+        }
+    }
+
+    private func beginTitleEdit() {
+        titleDraft = eventName
+        isEditingTitle = true
+        titleFieldFocused = true
+    }
+
+    private func cancelTitleEdit() {
+        titleDraft = eventName
+        isEditingTitle = false
+        titleFieldFocused = false
+    }
+
+    private func commitTitleEdit() {
+        saveEventNameAction(titleDraft)
+        titleDraft = eventName
+        isEditingTitle = false
+        titleFieldFocused = false
     }
 }
 
@@ -878,27 +1061,12 @@ private struct GuestLimitSheet: View {
             dismissAction: dismissAction
         ) {
             VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 3) {
-                    ForEach(Array(guestLevels.enumerated()), id: \.element) { index, level in
-                        Button {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                                selectedLimit = level
-                            }
-                        } label: {
-                            RoundedRectangle(cornerRadius: index == 0 || index == guestLevels.count - 1 ? 10 : 2)
-                                .fill(index < filledSegments ? Color(hex: "#574BE7") : Color.white.opacity(0.11))
-                                .frame(height: 58)
-                                .overlay(alignment: .bottom) {
-                                    if selectedLimit == level {
-                                        Circle()
-                                            .fill(.white)
-                                            .frame(width: 8, height: 8)
-                                            .padding(.bottom, 8)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
+                SegmentedSelectionBar(
+                    options: guestLevels,
+                    filledSegments: filledSegments,
+                    selectedValue: selectedLimit
+                ) { level in
+                    selectedLimit = level
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -1063,19 +1231,12 @@ private struct PhotosPerPersonSheet: View {
             dismissAction: dismissAction
         ) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 3) {
-                    ForEach(Array(photoOptions.enumerated()), id: \.element) { index, amount in
-                        Button {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                                selectedPhotos = amount
-                            }
-                        } label: {
-                            RoundedRectangle(cornerRadius: index == 0 || index == photoOptions.count - 1 ? 10 : 2)
-                                .fill(index <= (photoOptions.firstIndex(of: selectedPhotos) ?? 0) ? Color(hex: "#574BE7") : Color.white.opacity(0.11))
-                                .frame(height: 58)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                SegmentedSelectionBar(
+                    options: photoOptions,
+                    filledSegments: (photoOptions.firstIndex(of: selectedPhotos) ?? 0) + 1,
+                    selectedValue: selectedPhotos
+                ) { amount in
+                    selectedPhotos = amount
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -1460,7 +1621,7 @@ private struct HomeExpandedSheet<Content: View>: View {
     }
 
     var body: some View {
-        HomeSheetContainer {
+        HomeChildOverlayContainer {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top, spacing: 14) {
                     if let backAction {
@@ -1514,6 +1675,39 @@ private struct HomeExpandedSheet<Content: View>: View {
     }
 }
 
+private struct HomeChildOverlayContainer<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            content
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 20)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: proxy.size.height)
+                    }
+                )
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#1B1D26"), Color(hex: "#15161E")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.white.opacity(0.13), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .shadow(color: .black.opacity(0.32), radius: 24, x: 0, y: 16)
+    }
+}
+
 private struct HomeSheetContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -1527,6 +1721,11 @@ private struct HomeSheetContainer<Content: View>: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
                     .padding(.bottom, 28)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: HomeSheetHeightPreferenceKey.self, value: proxy.size.height)
+                        }
+                    )
             }
             .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1543,6 +1742,110 @@ private struct HomeSheetContainer<Content: View>: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 28))
         }
+    }
+}
+
+private struct SegmentedSelectionBar: View {
+    let options: [Int]
+    let filledSegments: Int
+    let selectedValue: Int
+    let selectAction: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.element) { index, value in
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        selectAction(value)
+                    }
+                } label: {
+                    Rectangle()
+                        .fill(index < filledSegments ? Color(hex: "#574BE7") : Color.white.opacity(0.12))
+                        .frame(height: 58)
+                        .clipShape(SegmentedBarSegmentShape(
+                            isFirst: index == 0,
+                            isLast: index == options.count - 1,
+                            radius: 12
+                        ))
+                        .overlay(alignment: .trailing) {
+                            if index < options.count - 1 {
+                                Rectangle()
+                                    .fill(Color(hex: "#181A22"))
+                                    .frame(width: 2)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if selectedValue == value {
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 8, height: 8)
+                                    .padding(.bottom, 8)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct SegmentedBarSegmentShape: Shape {
+    let isFirst: Bool
+    let isLast: Bool
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let topLeft = isFirst ? radius : 0
+        let bottomLeft = isFirst ? radius : 0
+        let topRight = isLast ? radius : 0
+        let bottomRight = isLast ? radius : 0
+
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - topRight, y: rect.minY))
+        if topRight > 0 {
+            path.addArc(
+                center: CGPoint(x: rect.maxX - topRight, y: rect.minY + topRight),
+                radius: topRight,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(0),
+                clockwise: false
+            )
+        }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottomRight))
+        if bottomRight > 0 {
+            path.addArc(
+                center: CGPoint(x: rect.maxX - bottomRight, y: rect.maxY - bottomRight),
+                radius: bottomRight,
+                startAngle: .degrees(0),
+                endAngle: .degrees(90),
+                clockwise: false
+            )
+        }
+        path.addLine(to: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY))
+        if bottomLeft > 0 {
+            path.addArc(
+                center: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY - bottomLeft),
+                radius: bottomLeft,
+                startAngle: .degrees(90),
+                endAngle: .degrees(180),
+                clockwise: false
+            )
+        }
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + topLeft))
+        if topLeft > 0 {
+            path.addArc(
+                center: CGPoint(x: rect.minX + topLeft, y: rect.minY + topLeft),
+                radius: topLeft,
+                startAngle: .degrees(180),
+                endAngle: .degrees(270),
+                clockwise: false
+            )
+        }
+        path.closeSubpath()
+        return path
     }
 }
 
