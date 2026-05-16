@@ -13,6 +13,8 @@ struct CameraView: View {
     
     var eventID: String
     var userName: String
+    var openHomeTab: () -> Void = {}
+    var openSettingsTab: () -> Void = {}
     
     @StateObject private var camera = CameraModel()
     
@@ -106,6 +108,16 @@ struct CameraView: View {
 
                 }
             }
+        }
+        .toolbar(.hidden, for: .tabBar)
+        .overlay(alignment: .bottom) {
+            AppBottomTabBar(
+                selectedTab: .camera,
+                homeAction: openHomeTab,
+                cameraAction: {},
+                settingsAction: openSettingsTab
+            )
+            .ignoresSafeArea(.container, edges: .bottom)
         }
         .onAppear{
             camera.eventID = eventID

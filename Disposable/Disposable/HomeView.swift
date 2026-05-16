@@ -8,6 +8,7 @@ import FirebaseFirestore
 import FirebaseStorage
 import SceneKit
 import PhotosUI
+import AVFoundation
 
 extension Color {
     init(hex: String) {
@@ -31,6 +32,8 @@ struct HomeView: View {
     @Binding var isInEvent: Bool
     @Binding var eventData: [String: Any]?
     @Binding var deepLinkedEventId: String?
+    @Binding var selectedHomeTab: HomeDashboardTab
+    let openSettingsTab: () -> Void
 
     @State private var participantsCount: Int = 0
     @State private var countdownText: String = ""
@@ -57,6 +60,7 @@ struct HomeView: View {
     @State private var selectedShareBackground: QRShareBackground = .warm
     @State private var selectedShareQRColor: QRShareColor = .black
     @State private var coverDraft = HomeCoverDraft()
+    @State private var isCameraFlowPresented = false
 
     var body: some View {
         NavigationStack {
@@ -125,6 +129,16 @@ struct HomeView: View {
                     .presentationBackground(Color.clear)
                     .presentationDetents(homeModalDetents)
                     .interactiveDismissDisabled(true)
+            }
+            .fullScreenCover(isPresented: $isCameraFlowPresented) {
+                POVCameraFlowView(
+                    eventID: currentEventID,
+                    userName: currentUserName,
+                    eventName: homeEventName,
+                    endDateText: "Ends on 23 May",
+                    shotsAllowed: selectedPhotosPerPerson,
+                    coverDraft: coverDraft
+                )
             }
             .alert("Event Deleted", isPresented: $showEventDeletedAlert) {
                 Button("OK") { leaveEvent() }
@@ -263,16 +277,19 @@ struct HomeView: View {
     private func activePOVDashboard(_ data: [String: Any]) -> some View {
         POVDashboardLayout(
             eventName: homeEventName,
+            coverDraft: coverDraft,
             subtitle: subtitle(for: data),
             statusText: dashboardStatusText(for: data),
+            selectedTab: $selectedHomeTab,
             phoneShowingBack: $phoneShowingBack,
             scheduleAction: { presentHomeModal(.details) },
             instantAction: { presentHomeModal(.details) },
             galleryAction: { presentHomeModal(.details) },
-            cameraAction: { presentHomeModal(.details) },
+            cameraAction: { isCameraFlowPresented = true },
             editAction: { presentHomeModal(.details) },
             qrAction: { presentHomeModal(.share) },
-            shareAction: { presentHomeModal(.share) }
+            shareAction: { presentHomeModal(.share) },
+            settingsTabAction: openSettingsTab
         )
         .overlay(alignment: .topTrailing) {
             Button(action: { showEndEventAlert = true }) {
@@ -296,16 +313,19 @@ struct HomeView: View {
     private var emptyHostDashboard: some View {
         POVDashboardLayout(
             eventName: homeEventName,
+            coverDraft: coverDraft,
             subtitle: "Share with friends!",
             statusText: "Up to 10 Guests • Ends 23 May at 23:59",
+            selectedTab: $selectedHomeTab,
             phoneShowingBack: $phoneShowingBack,
             scheduleAction: { presentHomeModal(.details) },
             instantAction: { presentHomeModal(.details) },
             galleryAction: { presentHomeModal(.details) },
-            cameraAction: { presentHomeModal(.details) },
+            cameraAction: { isCameraFlowPresented = true },
             editAction: { presentHomeModal(.details) },
             qrAction: { presentHomeModal(.share) },
-            shareAction: { presentHomeModal(.share) }
+            shareAction: { presentHomeModal(.share) },
+            settingsTabAction: openSettingsTab
         )
     }
 
@@ -424,6 +444,14 @@ struct HomeView: View {
 
     private func dismissHomeModal() {
         isHomeModalPresented = false
+    }
+
+    private var currentEventID: String {
+        eventData?["eventId"] as? String ?? "noEvent"
+    }
+
+    private var currentUserName: String {
+        eventData?["userName"] as? String ?? "anonymous"
     }
 
     private var homeModalDetents: Set<PresentationDetent> {
@@ -1089,6 +1117,7 @@ private struct HomeEventDetailsSheet: View {
 
                 HomeDetailsCoverSection(
                     summary: summary,
+                    coverDraft: coverDraft,
                     namespace: coverEditorNamespace,
                     editAction: openCoverEditor,
                     photoAction: openCoverEditor
@@ -1221,10 +1250,7 @@ private struct HomeEventDetailsSheet: View {
                     namespace: coverEditorNamespace,
                     doneAction: closeCoverEditor
                 )
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.34, anchor: .top).combined(with: .opacity),
-                    removal: .scale(scale: 0.92, anchor: .top).combined(with: .opacity)
-                ))
+                .transition(.opacity)
                 .zIndex(3)
             }
         }
@@ -2377,45 +2403,49 @@ private struct HomeCoverEditorScreen: View {
     @FocusState private var textFieldFocused: Bool
 
     var body: some View {
-        ZStack {
-            editorBackground
+        GeometryReader { proxy in
+            let phoneHeight = min(max(proxy.size.height * 0.5, 340), 420)
+            let phoneWidth = min(proxy.size.width * 0.78, 286)
 
-            VStack(spacing: 0) {
-                header
-                    .padding(.top, 12)
+            ZStack {
+                editorBackground
 
-                Spacer(minLength: 16)
+                VStack(spacing: 12) {
+                    header
+                        .padding(.top, 18)
 
-                coverCarousel
-                    .frame(height: 430)
+                    coverCarousel(width: phoneWidth, height: phoneHeight)
+                        .frame(height: phoneHeight)
+                        .padding(.top, 6)
 
-                Spacer(minLength: 14)
+                    editorField
+                        .frame(minHeight: 34, alignment: .center)
+                        .padding(.horizontal, 22)
 
-                editorField
+                    toolBar
+                        .frame(height: 88)
+                        .padding(.horizontal, 22)
+
+                    Button(action: doneAction) {
+                        Text("Done")
+                            .font(.satoshi(size: 18, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 58)
+                            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 28)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
                     .padding(.horizontal, 22)
-                    .padding(.bottom, 12)
-
-                toolBar
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 16)
-
-                Button(action: doneAction) {
-                    Text("Done")
-                        .font(.satoshi(size: 18, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 58)
-                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 28)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
+                    .padding(.bottom, max(proxy.safeAreaInsets.bottom, 12))
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 22)
-                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
+        .matchedGeometryEffect(id: "cover-editor-card", in: namespace)
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .ignoresSafeArea(edges: .bottom)
         .onChange(of: selectedPhotoItem) { _, item in
@@ -2463,20 +2493,27 @@ private struct HomeCoverEditorScreen: View {
         }
     }
 
-    private var coverCarousel: some View {
+    private func coverCarousel(width: CGFloat, height: CGFloat) -> some View {
         TabView(selection: $draft.style) {
             ForEach(HomeCoverStyle.allCases) { style in
-                CoverEditorPhonePreview(draft: draft, style: style, large: true)
-                    .frame(width: 256, height: 410)
-                    .matchedGeometryEffect(
-                        id: style == draft.style ? "cover-phone-preview" : "cover-phone-\(style.id)",
-                        in: namespace
-                    )
-                    .padding(.horizontal, 54)
+                Phone3DSceneView(
+                    eventName: draft.title,
+                    coverDraft: styledDraft(style),
+                    angle: 180,
+                    warmReflection: false
+                )
+                    .frame(width: width, height: height)
+                    .padding(.horizontal, 36)
                     .tag(style)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+
+    private func styledDraft(_ style: HomeCoverStyle) -> HomeCoverDraft {
+        var copy = draft
+        copy.style = style
+        return copy
     }
 
     @ViewBuilder
@@ -2521,6 +2558,7 @@ private struct HomeCoverEditorScreen: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func toolButton(for tool: HomeCoverEditorTool) -> some View {
@@ -2548,10 +2586,10 @@ private struct HomeCoverEditorScreen: View {
             }
 
             Text(tool.title)
-                .font(.satoshi(size: 13, weight: .medium))
+                .font(.satoshi(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.88))
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.68)
         }
         .frame(maxWidth: .infinity)
     }
@@ -2565,7 +2603,7 @@ private struct HomeCoverEditorScreen: View {
 
             await MainActor.run {
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
-                    draft.image = image
+                    draft.image = image.coverEditorPreparedImage()
                     activeTool = .photo
                 }
             }
@@ -2599,185 +2637,247 @@ private struct CoverEditorTextField: View {
     }
 }
 
-private struct CoverEditorPhonePreview: View {
-    let draft: HomeCoverDraft
-    let style: HomeCoverStyle
-    let large: Bool
+private enum HomeCoverTextureRenderer {
+    private static let textureSize = CGSize(width: 430, height: 920)
+    private static let screenCornerRadius: CGFloat = 46
 
-    var body: some View {
-        ZStack {
-            phoneBackground
+    static func image(for draft: HomeCoverDraft) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: textureSize, format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 2
+            format.opaque = false
+            return format
+        }())
 
-            switch style {
+        return renderer.image { context in
+            let rect = CGRect(origin: .zero, size: textureSize)
+            UIColor.clear.setFill()
+            UIRectFill(rect)
+
+            context.cgContext.saveGState()
+            UIBezierPath(roundedRect: rect, cornerRadius: screenCornerRadius).addClip()
+
+            switch draft.style {
             case .polaroid:
-                polaroidContent
+                drawPolaroid(draft, in: rect, context: context.cgContext)
             case .starter:
-                starterContent
+                drawStarter(draft, in: rect, context: context.cgContext)
             case .minimal:
-                minimalContent
+                drawMinimal(draft, in: rect, context: context.cgContext)
             }
+
+            context.cgContext.restoreGState()
         }
-        .clipShape(RoundedRectangle(cornerRadius: large ? 36 : 22))
-        .overlay(
-            RoundedRectangle(cornerRadius: large ? 36 : 22)
-                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+    }
+
+    private static func drawPolaroid(_ draft: HomeCoverDraft, in rect: CGRect, context: CGContext) {
+        drawLinearGradient(
+            colors: [
+                UIColor(red: 0.58, green: 0.45, blue: 0.86, alpha: 1),
+                UIColor(red: 0.95, green: 0.68, blue: 0.64, alpha: 1)
+            ],
+            in: rect,
+            context: context
         )
-        .shadow(color: .black.opacity(0.28), radius: large ? 22 : 10, y: large ? 16 : 6)
+
+        let cardRect = CGRect(x: 68, y: 286, width: 294, height: 278)
+        context.saveGState()
+        context.translateBy(x: cardRect.midX, y: cardRect.midY)
+        context.rotate(by: -3.2 * .pi / 180)
+        let localCard = CGRect(x: -cardRect.width / 2, y: -cardRect.height / 2, width: cardRect.width, height: cardRect.height)
+        UIColor.white.setFill()
+        UIBezierPath(roundedRect: localCard, cornerRadius: 5).fill()
+
+        let photoRect = CGRect(x: localCard.minX + 20, y: localCard.minY + 20, width: localCard.width - 40, height: 178)
+        drawCoverPhoto(draft.image, in: photoRect, cornerRadius: 3)
+        drawText(
+            draft.subtitle,
+            in: CGRect(x: photoRect.maxX - 118, y: photoRect.maxY - 29, width: 106, height: 24),
+            font: .satoshi(size: 18, weight: .bold),
+            color: UIColor(red: 0.9, green: 0.82, blue: 0.25, alpha: 1),
+            alignment: .right
+        )
+        drawText(
+            draft.title,
+            in: CGRect(x: localCard.minX + 24, y: photoRect.maxY + 18, width: localCard.width - 48, height: 42),
+            font: .satoshi(size: 28, weight: .italic),
+            color: UIColor(red: 0.08, green: 0.07, blue: 0.09, alpha: 1),
+            alignment: .center
+        )
+        context.restoreGState()
+
+        drawCoverButton(draft.buttonTitle, rect: CGRect(x: 36, y: 796, width: 358, height: 58), dark: true)
+        drawHomeIndicator(in: rect)
     }
 
-    private var phoneBackground: some View {
-        Group {
-            switch style {
-            case .polaroid:
-                LinearGradient(colors: [Color(hex: "#967BD4"), Color(hex: "#EFAEA3")], startPoint: .top, endPoint: .bottom)
-            case .starter:
-                Color(hex: "#172035")
-            case .minimal:
-                Color.white
-            }
-        }
+    private static func drawStarter(_ draft: HomeCoverDraft, in rect: CGRect, context: CGContext) {
+        UIColor(red: 0.08, green: 0.12, blue: 0.22, alpha: 1).setFill()
+        UIRectFill(rect)
+
+        drawText(
+            draft.title,
+            in: CGRect(x: 64, y: 418, width: rect.width - 128, height: 116),
+            font: .satoshi(size: 44, weight: .black),
+            color: .white,
+            alignment: .center
+        )
+        UIColor.white.withAlphaComponent(0.12).setFill()
+        UIRectFill(CGRect(x: 142, y: 542, width: 146, height: 1))
+        drawText(
+            draft.subtitle,
+            in: CGRect(x: 84, y: 564, width: rect.width - 168, height: 34),
+            font: .satoshi(size: 26, weight: .medium),
+            color: UIColor.white.withAlphaComponent(0.58),
+            alignment: .center
+        )
+
+        drawCoverButton(draft.buttonTitle, rect: CGRect(x: 36, y: 796, width: 358, height: 58), dark: false)
+        drawHomeIndicator(in: rect)
     }
 
-    private var polaroidContent: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: large ? 96 : 44)
+    private static func drawMinimal(_ draft: HomeCoverDraft, in rect: CGRect, context: CGContext) {
+        UIColor.white.setFill()
+        UIRectFill(rect)
 
-            ZStack(alignment: .bottom) {
-                PolaroidCardImage(image: draft.image, dateText: draft.subtitle)
-                    .frame(width: large ? 180 : 104, height: large ? 188 : 108)
-                    .rotationEffect(.degrees(-2.5))
+        let photoRect = CGRect(x: 34, y: 72, width: rect.width - 68, height: 560)
+        drawCoverPhoto(draft.image, in: photoRect, cornerRadius: 22)
+        drawText(
+            draft.title,
+            in: CGRect(x: 44, y: 656, width: rect.width - 88, height: 82),
+            font: .satoshi(size: 38, weight: .black),
+            color: .black,
+            alignment: .center
+        )
+        drawText(
+            draft.subtitle,
+            in: CGRect(x: 44, y: 738, width: rect.width - 88, height: 30),
+            font: .satoshi(size: 20, weight: .bold),
+            color: UIColor.black.withAlphaComponent(0.72),
+            alignment: .center
+        )
 
-                Text(draft.title)
-                    .font(.satoshi(size: large ? 17 : 9, weight: .italic))
-                    .foregroundStyle(Color(hex: "#171419"))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.58)
-                    .padding(.bottom, large ? 20 : 11)
-                    .rotationEffect(.degrees(-2.5))
-            }
-
-            Spacer()
-            coverButton(dark: true)
-                .padding(.horizontal, large ? 18 : 10)
-                .padding(.bottom, large ? 20 : 10)
-        }
+        drawCoverButton(draft.buttonTitle, rect: CGRect(x: 36, y: 796, width: 358, height: 58), dark: false)
+        drawHomeIndicator(in: rect)
     }
 
-    private var starterContent: some View {
-        VStack(spacing: 14) {
-            Spacer()
+    private static func drawCoverPhoto(_ image: UIImage?, in rect: CGRect, cornerRadius: CGFloat = 0) {
+        let clipPath = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
 
-            Text(draft.title)
-                .font(.satoshi(size: large ? 24 : 13, weight: .black))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .minimumScaleFactor(0.64)
-                .padding(.horizontal, large ? 30 : 14)
-
-            Rectangle()
-                .fill(.white.opacity(0.12))
-                .frame(width: large ? 108 : 52, height: 1)
-
-            Text(draft.subtitle)
-                .font(.satoshi(size: large ? 15 : 8, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
-
-            Spacer()
-            coverButton(dark: false)
-                .padding(.horizontal, large ? 18 : 10)
-                .padding(.bottom, large ? 20 : 10)
+        guard let image else {
+            guard let context = UIGraphicsGetCurrentContext() else { return }
+            context.saveGState()
+            clipPath.addClip()
+            drawLinearGradient(
+                colors: [
+                    UIColor(red: 0.88, green: 0.82, blue: 0.62, alpha: 1),
+                    UIColor(red: 0.48, green: 0.39, blue: 0.36, alpha: 1),
+                    UIColor(red: 0.2, green: 0.16, blue: 0.18, alpha: 1)
+                ],
+                in: rect,
+                context: context
+            )
+            context.restoreGState()
+            drawText(
+                "photo",
+                in: rect.insetBy(dx: 20, dy: 68),
+                font: .satoshi(size: 18, weight: .medium),
+                color: UIColor.white.withAlphaComponent(0.34),
+                alignment: .center
+            )
+            return
         }
+
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        context.saveGState()
+        clipPath.addClip()
+        image.drawAspectFill(in: rect)
+        context.restoreGState()
     }
 
-    private var minimalContent: some View {
-        VStack(spacing: 14) {
-            CoverPhoto(image: draft.image)
-                .frame(maxWidth: .infinity)
-                .frame(height: large ? 240 : 124)
-                .clipped()
+    private static func drawCoverButton(_ text: String, rect: CGRect, dark: Bool) {
+        let fill = dark ? UIColor(red: 0.24, green: 0.18, blue: 0.25, alpha: 1) : UIColor.white
+        let foreground = dark ? UIColor.white : UIColor.black
+        fill.setFill()
+        UIBezierPath(roundedRect: rect, cornerRadius: rect.height / 2).fill()
 
-            Text(draft.title)
-                .font(.satoshi(size: large ? 20 : 11, weight: .black))
-                .foregroundStyle(.black)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, large ? 22 : 10)
-
-            Text(draft.subtitle)
-                .font(.satoshi(size: large ? 12 : 7, weight: .bold))
-                .foregroundStyle(.black.opacity(0.72))
-
-            Spacer()
-            coverButton(dark: false)
-                .padding(.horizontal, large ? 18 : 10)
-                .padding(.bottom, large ? 20 : 10)
-        }
+        let title = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Take Photos" : text
+        drawText(
+            "\(title)  ->",
+            in: rect.insetBy(dx: 18, dy: 16),
+            font: .satoshi(size: 19, weight: .black),
+            color: foreground,
+            alignment: .center
+        )
     }
 
-    private func coverButton(dark: Bool) -> some View {
-        HStack(spacing: 10) {
-            Text(draft.buttonTitle.isEmpty ? "Take Photos" : draft.buttonTitle)
-                .font(.satoshi(size: large ? 12 : 7, weight: .black))
-            Image(systemName: "arrow.right")
-                .font(.satoshi(size: large ? 12 : 7, weight: .bold))
-        }
-        .foregroundStyle(dark ? .white : .black)
-        .frame(maxWidth: .infinity)
-        .frame(height: large ? 36 : 19)
-        .background(dark ? Color(hex: "#3F3140") : Color.white, in: Capsule())
+    private static func drawHomeIndicator(in rect: CGRect) {
+        UIColor.black.setFill()
+        UIBezierPath(roundedRect: CGRect(x: rect.midX - 66, y: 888, width: 132, height: 5), cornerRadius: 2.5).fill()
+    }
+
+    private static func drawLinearGradient(colors: [UIColor], in rect: CGRect, context: CGContext?) {
+        guard let context,
+              let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: colors.map(\.cgColor) as CFArray,
+                locations: nil
+              ) else { return }
+
+        context.drawLinearGradient(gradient, start: CGPoint(x: rect.midX, y: rect.minY), end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
+    }
+
+    private static func drawText(_ text: String, in rect: CGRect, font: UIFont, color: UIColor, alignment: NSTextAlignment) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+
+        text.draw(
+            with: rect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ],
+            context: nil
+        )
     }
 }
 
-private struct PolaroidCardImage: View {
-    let image: UIImage?
-    let dateText: String
+private extension UIImage {
+    func coverEditorPreparedImage() -> UIImage {
+        let targetSize = CGSize(width: 860, height: 1120)
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = true
+            return format
+        }())
 
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                CoverPhoto(image: image)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 42)
-            }
-            .background(Color.white)
-
-            Text(dateText)
-                .font(.satoshi(size: 11, weight: .medium))
-                .foregroundStyle(Color(hex: "#E6D044"))
-                .padding(.trailing, 17)
-                .padding(.bottom, 50)
+        return renderer.image { _ in
+            drawAspectFill(in: CGRect(origin: .zero, size: targetSize))
         }
     }
-}
 
-private struct CoverPhoto: View {
-    let image: UIImage?
+    func drawAspectFill(in rect: CGRect) {
+        let imageSize = size
+        guard imageSize.width > 0, imageSize.height > 0 else { return }
 
-    var body: some View {
-        ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [Color(hex: "#E7DDB8"), Color(hex: "#7D6B61"), Color(hex: "#33272B")],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                Image(systemName: "photo")
-                    .font(.satoshi(size: 17, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.32))
-            }
-        }
-        .clipped()
+        let scale = max(rect.width / imageSize.width, rect.height / imageSize.height)
+        let drawSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let drawRect = CGRect(
+            x: rect.midX - drawSize.width / 2,
+            y: rect.midY - drawSize.height / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+        draw(in: drawRect)
     }
 }
 
 private struct HomeDetailsCoverSection: View {
     let summary: HomeEventSummary
+    let coverDraft: HomeCoverDraft
     let namespace: Namespace.ID
     let editAction: () -> Void
     let photoAction: () -> Void
@@ -2812,12 +2912,12 @@ private struct HomeDetailsCoverSection: View {
                 ZStack {
                     Phone3DSceneView(
                         eventName: summary.eventName,
+                        coverDraft: coverDraft,
                         angle: 180,
                         warmReflection: false
                     )
                     .frame(width: 218, height: 258)
                     .offset(x: 6)
-                    .matchedGeometryEffect(id: "cover-phone-preview", in: namespace)
 
                     HStack {
                         Spacer()
@@ -2835,6 +2935,7 @@ private struct HomeDetailsCoverSection: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 252)
+        .matchedGeometryEffect(id: "cover-editor-card", in: namespace)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
@@ -3326,10 +3427,17 @@ private struct ShareOptionButton: View {
     }
 }
 
+enum HomeDashboardTab {
+    case create
+    case cameras
+}
+
 private struct POVDashboardLayout: View {
     let eventName: String
+    let coverDraft: HomeCoverDraft
     let subtitle: String
     let statusText: String
+    @Binding var selectedTab: HomeDashboardTab
     @Binding var phoneShowingBack: Bool
     let scheduleAction: () -> Void
     let instantAction: () -> Void
@@ -3338,6 +3446,7 @@ private struct POVDashboardLayout: View {
     let editAction: () -> Void
     let qrAction: () -> Void
     let shareAction: () -> Void
+    let settingsTabAction: () -> Void
 
     @State private var dragOffset: CGFloat = 0
     @State private var phoneRestingAngle: Double = 0
@@ -3349,48 +3458,69 @@ private struct POVDashboardLayout: View {
             let topInset = max(proxy.safeAreaInsets.top, 18)
 
             VStack(spacing: 12) {
-                homeHeroCard(phoneHeight: phoneHeight)
-                    .frame(height: heroHeight)
-
-                VStack(spacing: 12) {
-                    Button(action: scheduleAction) {
-                        actionRow(
-                            icon: "calendar.badge.plus",
-                            title: "Schedule a POV Camera",
-                            subtitle: "For weddings, parties, & planned events",
-                            background: Color(hex: "#5C55E8"),
-                            foreground: .white
+                Group {
+                    switch selectedTab {
+                    case .create:
+                        createDashboardContent(heroHeight: heroHeight, phoneHeight: phoneHeight)
+                    case .cameras:
+                        CamerasTabPage(
+                            eventName: eventName,
+                            coverDraft: coverDraft,
+                            openCameraAction: cameraAction,
+                            joinAction: galleryAction,
+                            addAction: scheduleAction
                         )
                     }
-                    .buttonStyle(.plain)
-
-                    Button(action: instantAction) {
-                        actionRow(
-                            icon: "bolt.fill",
-                            title: "Instant POV Camera",
-                            subtitle: "For right now! Start your POV immediately",
-                            background: Color(hex: "#41454D"),
-                            foreground: .white
-                        )
-                    }
-                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
-
-                bottomBar
-                    .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .padding(.top, topInset + 40)
-            .padding(.bottom, 4)
+            .padding(.bottom, 92)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             .background(Color(hex: "#11120D"))
+            .overlay(alignment: .bottom) {
+                bottomBar
+                    .ignoresSafeArea(.container, edges: .bottom)
+            }
         }
         .background(Color(hex: "#11120D"))
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea(edges: [.top, .bottom])
         .onAppear {
             phoneRestingAngle = 180
             phoneShowingBack = true
             dragOffset = 0
+        }
+    }
+
+    private func createDashboardContent(heroHeight: CGFloat, phoneHeight: CGFloat) -> some View {
+        VStack(spacing: 12) {
+            homeHeroCard(phoneHeight: phoneHeight)
+                .frame(height: heroHeight)
+
+            VStack(spacing: 12) {
+                Button(action: scheduleAction) {
+                    actionRow(
+                        icon: "calendar.badge.plus",
+                        title: "Schedule a POV Camera",
+                        subtitle: "For weddings, parties, & planned events",
+                        background: Color(hex: "#5C55E8"),
+                        foreground: .white
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: instantAction) {
+                    actionRow(
+                        icon: "bolt.fill",
+                        title: "Instant POV Camera",
+                        subtitle: "For right now! Start your POV immediately",
+                        background: Color(hex: "#41454D"),
+                        foreground: .white
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
         }
     }
 
@@ -3452,6 +3582,7 @@ private struct POVDashboardLayout: View {
 
             SwipeablePhoneMockup(
                 eventName: eventName,
+                coverDraft: coverDraft,
                 showingBack: $phoneShowingBack,
                 dragOffset: $dragOffset,
                 restingAngle: $phoneRestingAngle
@@ -3534,39 +3665,653 @@ private struct POVDashboardLayout: View {
 
     private var bottomBar: some View {
         HStack(spacing: 0) {
-            bottomTabIcon("plus.square", selected: true)
-            bottomTabIcon("camera", selected: false)
-            bottomTabIcon("gearshape", selected: false)
+            bottomTabButton("plus.square", tab: .create)
+            bottomTabButton("camera", tab: .cameras)
+            externalBottomTabButton("gearshape", action: settingsTabAction)
         }
         .frame(height: 68)
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 34)
         .padding(.bottom, 12)
         .background(Color(hex: "#11120D"))
     }
 
-    private func bottomTabIcon(_ systemName: String, selected: Bool) -> some View {
-        Image(systemName: systemName)
-            .font(.satoshi(size: 28, weight: .medium))
-            .foregroundStyle(selected ? Color(hex: "#8A84FF") : Color.white.opacity(0.42))
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(
-                Group {
-                    if selected {
-                        RoundedRectangle(cornerRadius: 22)
-                            .fill(Color(hex: "#302E59"))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22)
-                                    .stroke(Color(hex: "#5C55E8").opacity(0.35), lineWidth: 1)
-                            )
+    private func bottomTabButton(_ systemName: String, tab: HomeDashboardTab, action: (() -> Void)? = nil) -> some View {
+        let selected = selectedTab == tab
+
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                selectedTab = tab
+            }
+            action?()
+        } label: {
+            Image(systemName: systemName)
+                .font(.satoshi(size: 28, weight: .medium))
+                .foregroundStyle(selected ? Color(hex: "#8A84FF") : Color.white.opacity(0.42))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    Group {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(Color(hex: "#302E59"))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 22)
+                                        .stroke(Color(hex: "#5C55E8").opacity(0.35), lineWidth: 1)
+                                )
+                        }
                     }
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func externalBottomTabButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.satoshi(size: 28, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.42))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(systemName))
+    }
+}
+
+private struct CamerasTabPage: View {
+    let eventName: String
+    let coverDraft: HomeCoverDraft
+    let openCameraAction: () -> Void
+    let joinAction: () -> Void
+    let addAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                Text("Cameras")
+                    .font(.satoshi(size: 30, weight: .bold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button(action: joinAction) {
+                    HStack(spacing: 9) {
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.satoshi(size: 17, weight: .bold))
+                        Text("Join")
+                            .font(.satoshi(size: 17, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 17)
+                    .frame(height: 44)
+                    .background(Color.white.opacity(0.1), in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.11), lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 34)
+            .padding(.bottom, 28)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+
+            Text("ACTIVE")
+                .font(.satoshi(size: 15, weight: .bold))
+                .tracking(4)
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.horizontal, 16)
+                .padding(.top, 28)
+
+            Button(action: openCameraAction) {
+                ActiveCameraCard(eventName: eventName, coverDraft: coverDraft)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 16)
+            .padding(.top, 22)
+
+            Spacer()
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button(action: addAction) {
+                Image(systemName: "plus")
+                    .font(.satoshi(size: 33, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 76, height: 76)
+                    .background(Color(hex: "#5750E6"), in: Circle())
+                    .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 22)
+            .padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: "#11120D"))
+    }
+}
+
+private struct ActiveCameraCard: View {
+    let eventName: String
+    let coverDraft: HomeCoverDraft
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            cameraImage
+                .frame(width: 152, height: 276)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.68)],
+                startPoint: .center,
+                endPoint: .bottom
             )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Text("8d left")
+                .font(.satoshi(size: 14, weight: .bold))
+                .foregroundStyle(Color(hex: "#2B2928"))
+                .padding(.horizontal, 13)
+                .frame(height: 32)
+                .background(Color(hex: "#DDD0C0"), in: RoundedRectangle(cornerRadius: 8))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(8)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(eventName)
+                    .font(.satoshi(size: 16, weight: .italic))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                HStack(spacing: 7) {
+                    Text("Open Camera")
+                    Image(systemName: "chevron.right")
+                        .font(.satoshi(size: 15, weight: .bold))
+                }
+                .font(.satoshi(size: 16, weight: .bold))
+                .foregroundStyle(.white.opacity(0.74))
+            }
+            .padding(.horizontal, 13)
+            .padding(.bottom, 16)
+        }
+        .frame(width: 152, height: 276)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var cameraImage: some View {
+        if let image = coverDraft.image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Image("CameraScreenMockup")
+                .resizable()
+                .scaledToFill()
+        }
+    }
+}
+
+private struct POVCameraFlowView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let eventID: String
+    let userName: String
+    let eventName: String
+    let endDateText: String
+    let shotsAllowed: Int
+    let coverDraft: HomeCoverDraft
+
+    @State private var authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+
+    var body: some View {
+        Group {
+            if authorizationStatus == .authorized {
+                POVCameraLiveView(
+                    eventID: eventID,
+                    userName: userName,
+                    eventName: eventName,
+                    endDateText: endDateText,
+                    shotsAllowed: shotsAllowed,
+                    dismissAction: { dismiss() }
+                )
+            } else {
+                POVCameraPermissionView(
+                    eventName: eventName,
+                    endDateText: endDateText,
+                    shotsAllowed: shotsAllowed,
+                    coverDraft: coverDraft,
+                    dismissAction: { dismiss() },
+                    requestAccessAction: requestCameraAccess
+                )
+            }
+        }
+        .onAppear {
+            authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        }
+    }
+
+    private func requestCameraAccess() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            authorizationStatus = .authorized
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { _ in
+                DispatchQueue.main.async {
+                    authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+                }
+            }
+        default:
+            if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(settingsURL)
+            }
+        }
+    }
+}
+
+private struct POVCameraPermissionView: View {
+    let eventName: String
+    let endDateText: String
+    let shotsAllowed: Int
+    let coverDraft: HomeCoverDraft
+    let dismissAction: () -> Void
+    let requestAccessAction: () -> Void
+
+    var body: some View {
+        ZStack {
+            CameraStarterBackdrop(coverDraft: coverDraft)
+                .blur(radius: 10)
+                .overlay(Color.black.opacity(0.34))
+                .ignoresSafeArea()
+
+            CameraChrome(
+                eventName: eventName,
+                endDateText: endDateText,
+                dimmed: true,
+                closeSystemName: "xmark",
+                dismissAction: dismissAction
+            )
+
+            VStack {
+                Spacer()
+                accessCard
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 280)
+            }
+
+            CameraBottomControls(
+                shotsRemaining: shotsAllowed,
+                isFlashOn: false,
+                dimmed: true,
+                thumbnailImage: coverDraft.image,
+                flashAction: {},
+                shutterAction: {},
+                flipAction: {}
+            )
+        }
+        .background(Color.black)
+    }
+
+    private var accessCard: some View {
+        VStack(spacing: 0) {
+            Text("GRANT CAMERA ACCESS TO START")
+                .font(.satoshi(size: 14, weight: .bold))
+                .tracking(4)
+                .foregroundStyle(.white.opacity(0.66))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.top, 26)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.09))
+                .frame(height: 1)
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+
+            HStack(spacing: 16) {
+                Image(systemName: "camera.fill")
+                    .font(.satoshi(size: 30, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(width: 72, height: 72)
+                    .background(Color.white.opacity(0.08), in: Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Camera")
+                        .font(.satoshi(size: 23, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Unlock \(shotsAllowed) photos")
+                        .font(.satoshi(size: 19, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+
+                Spacer()
+
+                Button(action: requestAccessAction) {
+                    Text("Allow")
+                        .font(.satoshi(size: 19, weight: .bold))
+                        .foregroundStyle(Color(hex: "#8A84FF"))
+                        .padding(.horizontal, 18)
+                        .frame(height: 44)
+                        .background(Color.white.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 26)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+
+            Button(action: requestAccessAction) {
+                HStack(spacing: 10) {
+                    Text("Continue")
+                    Image(systemName: "arrow.right")
+                }
+                .font(.satoshi(size: 22, weight: .bold))
+                .foregroundStyle(Color(hex: "#8A84FF"))
+                .frame(maxWidth: .infinity)
+                .frame(height: 68)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(Color(hex: "#17181B").opacity(0.98), in: RoundedRectangle(cornerRadius: 26))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct POVCameraLiveView: View {
+    let eventID: String
+    let userName: String
+    let eventName: String
+    let endDateText: String
+    let shotsAllowed: Int
+    let dismissAction: () -> Void
+
+    @StateObject private var camera = CameraModel()
+
+    var body: some View {
+        ZStack {
+            CameraPreview(camera: camera)
+                .ignoresSafeArea()
+
+            if let previewImage = camera.previewImage {
+                Color.black.opacity(0.82).ignoresSafeArea()
+                capturedPreview(image: previewImage)
+            } else {
+                CameraChrome(
+                    eventName: eventName,
+                    endDateText: endDateText,
+                    dimmed: false,
+                    closeSystemName: "xmark",
+                    dismissAction: dismissAction
+                )
+
+                CameraBottomControls(
+                    shotsRemaining: max(camera.remainingPhotos, shotsAllowed),
+                    isFlashOn: camera.isFlashOn,
+                    dimmed: false,
+                    thumbnailImage: nil,
+                    flashAction: camera.toggleFlash,
+                    shutterAction: camera.takePhoto,
+                    flipAction: camera.switchCamera
+                )
+                .disabled(camera.remainingPhotos <= 0 && shotsAllowed <= 0)
+            }
+        }
+        .background(Color.black)
+        .onAppear {
+            camera.eventID = eventID
+            camera.userName = userName
+            camera.remainingPhotos = max(camera.remainingPhotos, shotsAllowed)
+            camera.fetchRemainingPhotos()
+        }
+        .onDisappear {
+            camera.stopSession()
+        }
+    }
+
+    private func capturedPreview(image: UIImage) -> some View {
+        VStack(spacing: 18) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 18)
+
+            HStack(spacing: 12) {
+                Button(action: camera.retakePhoto) {
+                    Text("Re-take")
+                        .font(.satoshi(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .background(Color.white.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button(action: camera.savePhoto) {
+                    Text("Save")
+                        .font(.satoshi(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .background(Color(hex: "#5750E6"), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+        }
+    }
+}
+
+private struct CameraChrome: View {
+    let eventName: String
+    let endDateText: String
+    let dimmed: Bool
+    let closeSystemName: String
+    let dismissAction: () -> Void
+
+    var body: some View {
+        VStack {
+            HStack(alignment: .top) {
+                Button(action: dismissAction) {
+                    Image(systemName: closeSystemName)
+                        .font(.satoshi(size: 27, weight: .medium))
+                        .foregroundStyle(.white.opacity(dimmed ? 0.76 : 0.95))
+                        .frame(width: 54, height: 54)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                VStack(spacing: 7) {
+                    HStack(spacing: 6) {
+                        Text(eventName)
+                            .font(.satoshi(size: 22, weight: .italic))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                        Image(systemName: "chevron.right")
+                            .font(.satoshi(size: 15, weight: .bold))
+                    }
+                    Text(endDateText)
+                        .font(.satoshi(size: 17, weight: .bold))
+                }
+                .foregroundStyle(.white.opacity(dimmed ? 0.38 : 0.92))
+                .frame(maxWidth: 260)
+
+                Spacer()
+
+                CameraSideControls(dimmed: dimmed)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 48)
+
+            Spacer()
+        }
+    }
+}
+
+private struct CameraSideControls: View {
+    let dimmed: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            sideIcon("gearshape")
+            divider
+            sideIcon("square.and.arrow.up")
+            divider
+            sideIcon("iphone.gen2.badge.plus")
+            divider
+            sideIcon("photo.badge.plus")
+        }
+        .foregroundStyle(.white.opacity(dimmed ? 0.3 : 0.95))
+        .frame(width: 58)
+        .background(Color.black.opacity(dimmed ? 0.12 : 0.28), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(dimmed ? 0.05 : 0.18), lineWidth: 1))
+    }
+
+    private func sideIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.satoshi(size: 23, weight: .medium))
+            .frame(width: 58, height: 56)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(dimmed ? 0.05 : 0.18))
+            .frame(height: 1)
+            .padding(.horizontal, 7)
+    }
+}
+
+private struct CameraBottomControls: View {
+    let shotsRemaining: Int
+    let isFlashOn: Bool
+    let dimmed: Bool
+    let thumbnailImage: UIImage?
+    let flashAction: () -> Void
+    let shutterAction: () -> Void
+    let flipAction: () -> Void
+
+    var body: some View {
+        VStack {
+            Spacer()
+
+            HStack(alignment: .center) {
+                Button(action: flashAction) {
+                    Image(systemName: isFlashOn ? "bolt.fill" : "bolt.slash.fill")
+                        .font(.satoshi(size: 31, weight: .bold))
+                        .foregroundStyle(.white.opacity(dimmed ? 0.28 : 0.9))
+                        .frame(width: 74)
+                }
+                .buttonStyle(.plain)
+                .offset(y: -82)
+
+                Spacer()
+
+                Button(action: shutterAction) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white, Color(hex: "#D6D7DA")],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 86, height: 86)
+                        .overlay(Circle().stroke(Color(hex: "#8A84FF"), lineWidth: 4))
+                        .overlay(Circle().stroke(Color.black.opacity(0.42), lineWidth: 1).padding(8))
+                        .opacity(dimmed ? 0.25 : 1)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button(action: flipAction) {
+                    Group {
+                        if let thumbnailImage {
+                            Image(uiImage: thumbnailImage)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Image(systemName: "camera.rotate.fill")
+                                .font(.satoshi(size: 30, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 74, height: 74)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .opacity(dimmed ? 0.24 : 0.95)
+                }
+                .buttonStyle(.plain)
+                .offset(y: -82)
+            }
+            .overlay(alignment: .bottomLeading) {
+                HStack(alignment: .bottom, spacing: 4) {
+                    Text("\(shotsRemaining)")
+                        .font(.satoshi(size: 34, weight: .black))
+                        .italic()
+                    Text("SHOTS\nREMAINING")
+                        .font(.satoshi(size: 12, weight: .black))
+                        .italic()
+                        .lineSpacing(-2)
+                        .padding(.bottom, 4)
+                }
+                .foregroundStyle(.white.opacity(dimmed ? 0.16 : 0.95))
+                .padding(.leading, 18)
+                .padding(.bottom, 8)
+            }
+            .padding(.horizontal, 26)
+            .padding(.bottom, 42)
+            .frame(maxWidth: .infinity)
+            .background(
+                LinearGradient(
+                    colors: [.clear, .black.opacity(dimmed ? 0.72 : 0.96)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 260)
+                .offset(y: 44),
+                alignment: .bottom
+            )
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+}
+
+private struct CameraStarterBackdrop: View {
+    let coverDraft: HomeCoverDraft
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#9F8F73"), Color(hex: "#60554D"), Color(hex: "#2D2E31")],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            if let image = coverDraft.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .opacity(0.55)
+            }
+        }
     }
 }
 
 private struct SwipeablePhoneMockup: View {
     let eventName: String
+    let coverDraft: HomeCoverDraft
     @Binding var showingBack: Bool
     @Binding var dragOffset: CGFloat
     @Binding var restingAngle: Double
@@ -3576,6 +4321,7 @@ private struct SwipeablePhoneMockup: View {
         ZStack {
             Phone3DSceneView(
                 eventName: eventName,
+                coverDraft: coverDraft,
                 angle: currentAngle,
                 warmReflection: !showingBack
             )
@@ -3633,6 +4379,7 @@ private struct SwipeablePhoneMockup: View {
 
 private struct Phone3DSceneView: UIViewRepresentable, Animatable {
     let eventName: String
+    let coverDraft: HomeCoverDraft
     var angle: Double
     let warmReflection: Bool
 
@@ -3649,12 +4396,12 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
         view.allowsCameraControl = false
         view.isUserInteractionEnabled = false
         view.scene = context.coordinator.scene
-        context.coordinator.build(eventName: eventName)
+        context.coordinator.build(eventName: eventName, coverDraft: coverDraft, initialAngle: angle)
         return view
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
-        context.coordinator.update(eventName: eventName, angle: angle, warmReflection: warmReflection)
+        context.coordinator.update(eventName: eventName, coverDraft: coverDraft, angle: angle, warmReflection: warmReflection)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -3673,6 +4420,9 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
         private let rimLight = SCNLight()
         private var tapeNode: SCNNode?
         private var frontTitleNode: SCNNode?
+        private var displayMaterial: SCNMaterial?
+        private var fallbackScreenMaterial: SCNMaterial?
+        private var currentTextureKey = ""
 
         init() {
             scene.rootNode.addChildNode(phoneNode)
@@ -3680,22 +4430,27 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             configureLights()
         }
 
-        func build(eventName: String) {
+        func build(eventName: String, coverDraft: HomeCoverDraft, initialAngle: Double) {
             currentEventName = eventName
             phoneNode.childNodes.forEach { $0.removeFromParentNode() }
+            displayMaterial = nil
+            fallbackScreenMaterial = nil
+            currentTextureKey = ""
+            setAngleImmediately(initialAngle)
 
-            if loadBundledIPhoneModel(eventName: eventName) {
+            if loadBundledIPhoneModel(eventName: eventName, coverDraft: coverDraft) {
                 return
             }
 
-            buildFallbackPhone(eventName: eventName)
+            buildFallbackPhone(eventName: eventName, coverDraft: coverDraft)
         }
 
-        func update(eventName: String, angle: Double, warmReflection: Bool) {
+        func update(eventName: String, coverDraft: HomeCoverDraft, angle: Double, warmReflection: Bool) {
             if currentEventName != eventName {
-                build(eventName: eventName)
+                build(eventName: eventName, coverDraft: coverDraft, initialAngle: angle)
             }
 
+            updateScreenTexture(coverDraft: coverDraft)
             updateLighting(warmReflection: warmReflection)
 
             let delta = abs(angle - currentAngle)
@@ -3708,11 +4463,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             if !isReleaseFlip {
                 activeFlipTarget = nil
                 phoneNode.removeAction(forKey: "dashboard-flip")
-                SCNTransaction.begin()
-                SCNTransaction.animationDuration = 0
-                phoneNode.eulerAngles.y = radians(for: angle)
-                SCNTransaction.commit()
-                currentAngle = angle
+                setAngleImmediately(angle)
                 return
             }
 
@@ -3738,7 +4489,16 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             Float(angle * .pi / 180)
         }
 
-        private func loadBundledIPhoneModel(eventName: String) -> Bool {
+        private func setAngleImmediately(_ angle: Double) {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0
+            phoneNode.eulerAngles.y = radians(for: angle)
+            SCNTransaction.commit()
+            currentAngle = angle
+            activeFlipTarget = nil
+        }
+
+        private func loadBundledIPhoneModel(eventName: String, coverDraft: HomeCoverDraft) -> Bool {
             guard let url = Bundle.main.url(forResource: "iPhone_17_Pro", withExtension: "usdz"),
                   let modelScene = try? SCNScene(url: url) else {
                 return false
@@ -3749,7 +4509,7 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                 wrapper.addChildNode(child.clone())
             }
             let modelHalfDepth = normalizeModel(wrapper)
-            attachCameraScreenTexture(to: wrapper)
+            attachCameraScreenTexture(to: wrapper, coverDraft: coverDraft)
             wrapper.eulerAngles.x = 0
             wrapper.eulerAngles.y = .pi
             phoneNode.addChildNode(wrapper)
@@ -3782,8 +4542,8 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             return (depth * scale) / 2
         }
 
-        private func attachCameraScreenTexture(to root: SCNNode) {
-            let screenImage = cameraScreenImage()
+        private func attachCameraScreenTexture(to root: SCNNode, coverDraft: HomeCoverDraft) {
+            let screenImage = cameraScreenImage(coverDraft: coverDraft)
             func visit(_ node: SCNNode) {
                 if let geometry = node.geometry {
                     if geometry.materials.contains(where: { $0.name == "Display" }) {
@@ -3798,11 +4558,14 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
                         material.diffuse.magnificationFilter = .linear
                         material.diffuse.minificationFilter = .linear
                         material.emission.contents = screenImage
+                        material.blendMode = .alpha
+                        material.transparencyMode = .aOne
                         material.isDoubleSided = false
                         material.writesToDepthBuffer = false
                         material.readsFromDepthBuffer = false
                         material.lightingModel = .constant
                         displayPlane.materials = [material]
+                        displayMaterial = material
 
                         let displayNode = SCNNode(geometry: displayPlane)
                         displayNode.position = SCNVector3(
@@ -3831,9 +4594,9 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             visit(root)
         }
 
-        private func buildFallbackPhone(eventName: String) {
+        private func buildFallbackPhone(eventName: String, coverDraft: HomeCoverDraft) {
             addPhoneBody()
-            addFrontFace(eventName: eventName)
+            addFrontFace(eventName: eventName, coverDraft: coverDraft)
             addBackFace(eventName: eventName)
             addSideButtons()
         }
@@ -3913,9 +4676,16 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             phoneNode.addChildNode(edgeNode)
         }
 
-        private func addFrontFace(eventName: String) {
+        private func addFrontFace(eventName: String, coverDraft: HomeCoverDraft) {
             let screen = SCNBox(width: 1.38, height: 2.83, length: 0.025, chamferRadius: 0.14)
-            screen.materials = [material(UIColor(red: 0.48, green: 0.38, blue: 0.3, alpha: 1), roughness: 0.55, metalness: 0.05)]
+            let screenMaterial = material(UIColor(red: 0.48, green: 0.38, blue: 0.3, alpha: 1), roughness: 0.55, metalness: 0.05)
+            screenMaterial.diffuse.contents = cameraScreenImage(coverDraft: coverDraft)
+            screenMaterial.emission.contents = cameraScreenImage(coverDraft: coverDraft)
+            screenMaterial.blendMode = .alpha
+            screenMaterial.transparencyMode = .aOne
+            screenMaterial.lightingModel = .constant
+            fallbackScreenMaterial = screenMaterial
+            screen.materials = [screenMaterial]
             let screenNode = SCNNode(geometry: screen)
             screenNode.position.z = 0.155
             phoneNode.addChildNode(screenNode)
@@ -4026,8 +4796,10 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
         private func addCameraScreenOverlay(z: Float) {
             let screen = SCNPlane(width: 1.31, height: 2.8)
             let material = SCNMaterial()
-            material.diffuse.contents = cameraScreenImage()
+            material.diffuse.contents = cameraScreenImage(coverDraft: HomeCoverDraft())
             material.emission.contents = UIColor.black
+            material.blendMode = .alpha
+            material.transparencyMode = .aOne
             material.roughness.contents = 0.82
             material.metalness.contents = 0
             material.isDoubleSided = false
@@ -4043,13 +4815,31 @@ private struct Phone3DSceneView: UIViewRepresentable, Animatable {
             phoneNode.addChildNode(screenNode)
         }
 
-        private func cameraScreenImage() -> UIImage {
-            if let url = Bundle.main.url(forResource: "CameraScreenMockup", withExtension: "png"),
-               let image = UIImage(contentsOfFile: url.path) {
-                return image
-            }
+        private func updateScreenTexture(coverDraft: HomeCoverDraft) {
+            let key = textureKey(for: coverDraft)
+            guard currentTextureKey != key else { return }
 
-            return UIImage(named: "CameraScreenMockup") ?? cameraScreenTexture()
+            let image = cameraScreenImage(coverDraft: coverDraft)
+            displayMaterial?.diffuse.contents = image
+            displayMaterial?.emission.contents = image
+            fallbackScreenMaterial?.diffuse.contents = image
+            fallbackScreenMaterial?.emission.contents = image
+            currentTextureKey = key
+        }
+
+        private func cameraScreenImage(coverDraft: HomeCoverDraft) -> UIImage {
+            HomeCoverTextureRenderer.image(for: coverDraft)
+        }
+
+        private func textureKey(for coverDraft: HomeCoverDraft) -> String {
+            let imageKey = coverDraft.image.map { "\(Unmanaged.passUnretained($0).toOpaque())" } ?? "none"
+            return [
+                coverDraft.style.rawValue,
+                coverDraft.title,
+                coverDraft.subtitle,
+                coverDraft.buttonTitle,
+                imageKey
+            ].joined(separator: "|")
         }
 
         private func cameraScreenTexture() -> UIImage {
