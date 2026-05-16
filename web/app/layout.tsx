@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "../css/iphone-mockup.css";
 
 export const metadata: Metadata = {
   title: "Disposable - Event Photo Sharing",
