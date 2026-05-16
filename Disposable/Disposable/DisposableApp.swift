@@ -108,12 +108,11 @@ struct DisposableApp: App {
         CameraView(
             eventID: currentEventID,
             userName: currentUserName,
-            openHomeTab: {
-                selectedHomeTab = .create
+            eventName: currentEventName,
+            endDateText: currentEventEndDateText,
+            closeAction: {
+                selectedHomeTab = .cameras
                 selectedTab = .home
-            },
-            openSettingsTab: {
-                selectedTab = .settings
             }
         )
     }
@@ -124,6 +123,20 @@ struct DisposableApp: App {
 
     private var currentUserName: String {
         eventData?["userName"] as? String ?? "anonymous"
+    }
+
+    private var currentEventName: String {
+        eventData?["eventName"] as? String ?? "Rizhan's House Party"
+    }
+
+    private var currentEventEndDateText: String {
+        guard let timestamp = eventData?["endTime"] as? TimeInterval else {
+            return "Ends on 23 May"
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        return "Ends on \(formatter.string(from: Date(timeIntervalSince1970: timestamp)))"
     }
 
     private func extractEventId(from url: URL) -> String? {

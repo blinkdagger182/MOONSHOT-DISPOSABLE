@@ -4,8 +4,6 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
-import FirebaseStorage
 import SceneKit
 import PhotosUI
 import AVFoundation
@@ -532,11 +530,10 @@ struct HomeView: View {
 
     private func endDateText(from data: [String: Any]) -> String {
         guard let duration = data["duration"] as? Int,
-              let startTime = data["startTime"] as? Timestamp else {
+              let startTimeRaw = data["startTime"] as? Double else {
             return "Sat 23 May • 23:59 GMT+8"
         }
-
-        let endDate = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
+        let endDate = Date(timeIntervalSince1970: startTimeRaw).addingTimeInterval(TimeInterval(duration * 3600))
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE d MMM • HH:mm"
         return "\(formatter.string(from: endDate)) GMT+8"
@@ -545,11 +542,10 @@ struct HomeView: View {
     private func dashboardStatusText(for data: [String: Any]) -> String {
         let guestLimit = data["guestLimit"] as? Int ?? selectedGuestLimit
         guard let duration = data["duration"] as? Int,
-              let startTime = data["startTime"] as? Timestamp else {
+              let startTimeRaw = data["startTime"] as? Double else {
             return "Up to \(guestLimit) Guests • Ends 23 May at 23:59"
         }
-
-        let endDate = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
+        let endDate = Date(timeIntervalSince1970: startTimeRaw).addingTimeInterval(TimeInterval(duration * 3600))
         let formatter = DateFormatter()
         formatter.dateFormat = "d MMM 'at' HH:mm"
         return "Up to \(guestLimit) Guests • Ends \(formatter.string(from: endDate))"
@@ -588,45 +584,22 @@ struct HomeView: View {
     }
 
     private func fetchUserRole() {
-        guard let eventId = eventData?["eventId"] as? String,
-              let userName = eventData?["userName"] as? String else { return }
-
-        let db = Firestore.firestore()
-        let participantsRef = db.collection("events").document(eventId).collection("participants")
-
-        participantsRef.whereField("name", isEqualTo: userName).getDocuments { snapshot, error in
-            if let error = error {
-                print("Error fetching role: \(error.localizedDescription)")
-            } else if let document = snapshot?.documents.first {
-                let role = document.data()["role"] as? String ?? "participant"
-                DispatchQueue.main.async {
-                    eventData?["role"] = role
-                }
-            }
-        }
+        // Role is stored locally in eventData when joining/creating
     }
 
     private func fetchParticipantsCount() {
         guard let eventId = eventData?["eventId"] as? String else { return }
-
-        let db = Firestore.firestore()
-        let participantsRef = db.collection("events").document(eventId).collection("participants")
-
-        participantsRef.getDocuments { snapshot, error in
-            if let error = error {
-                print("Error fetching participants count: \(error.localizedDescription)")
-                self.participantsCount = 0
-            } else {
-                self.participantsCount = snapshot?.documents.count ?? 0
-            }
+        Task {
+            let count = (try? await SupabaseManager.shared.fetchGuestCount(eventId: eventId)) ?? 0
+            await MainActor.run { participantsCount = count }
         }
     }
 
     private func startCountdown() {
         guard let duration = eventData?["duration"] as? Int,
-              let startTime = eventData?["startTime"] as? Timestamp else { return }
+              let startTimeRaw = eventData?["startTime"] as? Double else { return }
 
-        self.eventEndTime = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
+        self.eventEndTime = Date(timeIntervalSince1970: startTimeRaw).addingTimeInterval(TimeInterval(duration * 3600))
         self.revealSetting = eventData?["reveal"] as? String ?? "Immediately"
 
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
@@ -706,11 +679,7 @@ struct HomeView: View {
 
     private func restoreEventState() {
         if let savedData = UserDefaults.standard.data(forKey: "currentEventData"),
-           var decodedData = try? JSONSerialization.jsonObject(with: savedData, options: []) as? [String: Any] {
-            if let startTime = decodedData["startTime"] as? Double {
-                decodedData["startTime"] = Timestamp(date: Date(timeIntervalSince1970: startTime))
-            }
-
+           let decodedData = try? JSONSerialization.jsonObject(with: savedData, options: []) as? [String: Any] {
             self.eventData = decodedData
             self.isInEvent = UserDefaults.standard.bool(forKey: "isInEvent")
             syncHomeEventName()
@@ -742,10 +711,7 @@ struct HomeView: View {
         eventData?["eventName"] = resolvedName
         persistCurrentEventDataLocally()
 
-        guard let eventId = eventData?["eventId"] as? String else { return }
-        Firestore.firestore().collection("events").document(eventId).updateData([
-            "eventName": resolvedName
-        ])
+        // Supabase: event name updates handled server-side; local state persisted below
     }
 
     private func saveCoverDraft(_ draft: HomeCoverDraft) {
@@ -771,63 +737,34 @@ struct HomeView: View {
         ]
 
         if let image = draft.image,
-           let data = image.jpegData(compressionQuality: 0.82) {
-            let storageRef = Storage.storage().reference().child("events/\(eventId)/cover/cover.jpg")
-            let metadata = StorageMetadata()
-            metadata.contentType = "image/jpeg"
-
-            storageRef.putData(data, metadata: metadata) { _, error in
-                if let error {
-                    print("Cover upload error: \(error.localizedDescription)")
-                    Firestore.firestore().collection("events").document(eventId).updateData(payload)
-                    return
-                }
-
-                storageRef.downloadURL { url, _ in
-                    if let url {
-                        payload["coverImageURL"] = url.absoluteString
-                        DispatchQueue.main.async {
-                            eventData?["coverImageURL"] = url.absoluteString
-                            persistCurrentEventDataLocally()
-                        }
+           let jpegData = image.jpegData(compressionQuality: 0.82) {
+            Task {
+                let coverURL = try? await SupabaseManager.shared.uploadCoverImage(
+                    eventId: eventId,
+                    jpegData: jpegData
+                )
+                await MainActor.run {
+                    if let coverURL {
+                        eventData?["coverImageURL"] = coverURL
+                        persistCurrentEventDataLocally()
                     }
-                    Firestore.firestore().collection("events").document(eventId).updateData(payload)
                 }
             }
-        } else {
-            Firestore.firestore().collection("events").document(eventId).updateData(payload)
         }
     }
 
     private func persistCurrentEventDataLocally() {
-        guard let eventData else { return }
-
-        var serializable = eventData
-        if let timestamp = serializable["startTime"] as? Timestamp {
-            serializable["startTime"] = timestamp.dateValue().timeIntervalSince1970
-        }
-
-        guard let encodedData = try? JSONSerialization.data(withJSONObject: serializable, options: []) else { return }
+        guard let eventData,
+              let encodedData = try? JSONSerialization.data(withJSONObject: eventData, options: []) else { return }
         UserDefaults.standard.set(encodedData, forKey: "currentEventData")
         UserDefaults.standard.set(isInEvent, forKey: "isInEvent")
     }
 
     private func endEvent() {
         guard let eventId = eventData?["eventId"] as? String else { return }
-
-        let db = Firestore.firestore()
-        let eventDocRef = db.collection("events").document(eventId)
-
-        eventDocRef.collection("participants").getDocuments { snapshot, _ in
-            snapshot?.documents.forEach { $0.reference.delete() }
-        }
-
-        eventDocRef.collection("images").getDocuments { snapshot, _ in
-            snapshot?.documents.forEach { $0.reference.delete() }
-        }
-
-        eventDocRef.delete { error in
-            if error == nil {
+        Task {
+            try? await SupabaseManager.shared.deleteEvent(id: eventId)
+            await MainActor.run {
                 UserDefaults.standard.removeObject(forKey: "currentEventData")
                 UserDefaults.standard.set(false, forKey: "isInEvent")
                 isInEvent = false
@@ -848,13 +785,11 @@ struct HomeView: View {
 
     private func checkIfEventStillExists() {
         guard let eventId = eventData?["eventId"] as? String else { return }
-
-        let db = Firestore.firestore()
-        let eventRef = db.collection("events").document(eventId)
-
-        eventRef.getDocument { document, error in
-            if error != nil || document?.exists == false {
-                showEventDeletedAlert = true
+        Task {
+            do {
+                _ = try await SupabaseManager.shared.fetchEvent(id: eventId)
+            } catch {
+                await MainActor.run { showEventDeletedAlert = true }
             }
         }
     }
@@ -3946,6 +3881,7 @@ private struct POVCameraPermissionView: View {
 
             CameraBottomControls(
                 shotsRemaining: shotsAllowed,
+                totalShots: shotsAllowed,
                 isFlashOn: false,
                 dimmed: true,
                 thumbnailImage: coverDraft.image,
@@ -4037,6 +3973,9 @@ private struct POVCameraLiveView: View {
     let dismissAction: () -> Void
 
     @StateObject private var camera = CameraModel()
+    @State private var displayedShots = 0
+    @State private var hasRolledInitialShots = false
+    @State private var rollTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -4056,7 +3995,8 @@ private struct POVCameraLiveView: View {
                 )
 
                 CameraBottomControls(
-                    shotsRemaining: max(camera.remainingPhotos, shotsAllowed),
+                    shotsRemaining: displayedShots,
+                    totalShots: max(camera.maxPhotos, shotsAllowed),
                     isFlashOn: camera.isFlashOn,
                     dimmed: false,
                     thumbnailImage: nil,
@@ -4072,9 +4012,17 @@ private struct POVCameraLiveView: View {
             camera.eventID = eventID
             camera.userName = userName
             camera.remainingPhotos = max(camera.remainingPhotos, shotsAllowed)
+            displayedShots = max(camera.remainingPhotos, shotsAllowed)
             camera.fetchRemainingPhotos()
         }
+        .onChange(of: camera.remainingPhotos) { _, newValue in
+            updateDisplayedShots(for: newValue)
+        }
+        .onChange(of: camera.maxPhotos) { _, _ in
+            updateDisplayedShots(for: camera.remainingPhotos)
+        }
         .onDisappear {
+            rollTask?.cancel()
             camera.stopSession()
         }
     }
@@ -4108,7 +4056,54 @@ private struct POVCameraLiveView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 18)
+                .padding(.horizontal, 18)
+        }
+    }
+
+    private var shotRollKey: String {
+        "\(eventID)-\(userName)"
+    }
+
+    private func updateDisplayedShots(for remaining: Int) {
+        guard remaining >= 0 else { return }
+
+        if CameraShotRollMemory.hasRolled(shotRollKey) {
+            hasRolledInitialShots = true
+            displayedShots = remaining
+            return
+        }
+
+        if !hasRolledInitialShots, camera.maxPhotos > 0 {
+            hasRolledInitialShots = true
+            startInitialShotRoll(from: camera.maxPhotos, to: remaining)
+            return
+        }
+
+        displayedShots = remaining
+    }
+
+    private func startInitialShotRoll(from total: Int, to remaining: Int) {
+        rollTask?.cancel()
+        displayedShots = total
+
+        guard total != remaining else {
+            CameraShotRollMemory.markRolled(shotRollKey)
+            return
+        }
+
+        rollTask = Task { @MainActor in
+            let direction = total > remaining ? -1 : 1
+            var value = total
+
+            while value != remaining && !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 55_000_000)
+                value += direction
+                withAnimation(.easeOut(duration: 0.06)) {
+                    displayedShots = value
+                }
+            }
+
+            CameraShotRollMemory.markRolled(shotRollKey)
         }
     }
 }
@@ -4195,6 +4190,7 @@ private struct CameraSideControls: View {
 
 private struct CameraBottomControls: View {
     let shotsRemaining: Int
+    let totalShots: Int
     let isFlashOn: Bool
     let dimmed: Bool
     let thumbnailImage: UIImage?
@@ -4236,37 +4232,15 @@ private struct CameraBottomControls: View {
 
                 Spacer()
 
-                Button(action: flipAction) {
-                    Group {
-                        if let thumbnailImage {
-                            Image(uiImage: thumbnailImage)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            Image(systemName: "camera.rotate.fill")
-                                .font(.satoshi(size: 30, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 74, height: 74)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                    .opacity(dimmed ? 0.24 : 0.95)
-                }
-                .buttonStyle(.plain)
+                submissionControl(thumbnailImage: thumbnailImage, dimmed: dimmed, flipAction: flipAction)
                 .offset(y: -82)
             }
             .overlay(alignment: .bottomLeading) {
-                HStack(alignment: .bottom, spacing: 4) {
-                    Text("\(shotsRemaining)")
-                        .font(.satoshi(size: 34, weight: .black))
-                        .italic()
-                    Text("SHOTS\nREMAINING")
-                        .font(.satoshi(size: 12, weight: .black))
-                        .italic()
-                        .lineSpacing(-2)
-                        .padding(.bottom, 4)
-                }
-                .foregroundStyle(.white.opacity(dimmed ? 0.16 : 0.95))
+                FilmShotCounter(
+                    shotsRemaining: shotsRemaining,
+                    totalShots: totalShots,
+                    dimmed: dimmed
+                )
                 .padding(.leading, 18)
                 .padding(.bottom, 8)
             }
@@ -4285,6 +4259,143 @@ private struct CameraBottomControls: View {
             )
         }
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func submissionControl(thumbnailImage: UIImage?, dimmed: Bool, flipAction: @escaping () -> Void) -> some View {
+        Button(action: flipAction) {
+            CameraSubmissionThumbnail(thumbnailImage: thumbnailImage, dimmed: dimmed)
+                .frame(width: 78, height: 78)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 74, height: 74)
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "camera.fill")
+                .font(.satoshi(size: 25, weight: .bold))
+                .foregroundStyle(.white.opacity(dimmed ? 0.24 : 0.95))
+                .offset(x: 4, y: -42)
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topTrailing) {
+            if !dimmed {
+                Text("Tap to manage submissions")
+                    .font(.satoshi(size: 14, weight: .medium))
+                    .foregroundStyle(.black)
+                    .lineLimit(1)
+                    .padding(.horizontal, 11)
+                    .frame(height: 34)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(alignment: .bottomTrailing) {
+                        Triangle()
+                            .fill(Color.white)
+                            .frame(width: 14, height: 10)
+                            .offset(x: -12, y: 8)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .offset(x: 8, y: -2)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+private struct FilmShotCounter: View {
+    let shotsRemaining: Int
+    let totalShots: Int
+    let dimmed: Bool
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 7) {
+            VStack(alignment: .leading, spacing: -3) {
+                Text("\(shotsRemaining)")
+                    .font(.satoshi(size: 38, weight: .black))
+                    .italic()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .contentTransition(.numericText(value: Double(shotsRemaining)))
+
+                if totalShots > 0 {
+                    Text("\(totalShots)")
+                        .font(.satoshi(size: 31, weight: .black))
+                        .italic()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(.white.opacity(dimmed ? 0.08 : 0.16))
+                }
+            }
+            .frame(width: 54, alignment: .leading)
+            .animation(.easeOut(duration: 0.08), value: shotsRemaining)
+
+            Text("SHOTS\nREMAINING")
+                .font(.satoshi(size: 12, weight: .black))
+                .italic()
+                .lineSpacing(-2)
+                .padding(.bottom, 18)
+        }
+        .foregroundStyle(.white.opacity(dimmed ? 0.16 : 0.95))
+        .shadow(color: .black.opacity(0.45), radius: 6, y: 2)
+    }
+}
+
+private enum CameraShotRollMemory {
+    private static var rolledKeys = Set<String>()
+
+    static func hasRolled(_ key: String) -> Bool {
+        rolledKeys.contains(key)
+    }
+
+    static func markRolled(_ key: String) {
+        rolledKeys.insert(key)
+    }
+}
+
+private struct CameraSubmissionThumbnail: View {
+    let thumbnailImage: UIImage?
+    let dimmed: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 17)
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 44, height: 60)
+                .rotationEffect(.degrees(-8))
+                .offset(x: -13, y: 5)
+
+            Group {
+                if let thumbnailImage {
+                    Image(uiImage: thumbnailImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.72), Color(hex: "#8E8B42"), Color.black.opacity(0.92)],
+                        startPoint: .topTrailing,
+                        endPoint: .bottomLeading
+                    )
+                }
+            }
+            .frame(width: 54, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 17))
+            .rotationEffect(.degrees(10))
+            .offset(x: 9, y: -2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 17)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                    .rotationEffect(.degrees(10))
+                    .offset(x: 9, y: -2)
+            )
+        }
+        .opacity(dimmed ? 0.24 : 0.95)
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }
 

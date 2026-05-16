@@ -9,7 +9,7 @@ struct BrowserClipExperience: View {
     @State private var reloadToken = UUID()
 
     private var browserURL: URL? {
-        var components = URLComponents(string: "https://guest.tetamu.app/html/template.html")
+        var components = URLComponents(string: "https://guest.tetamu.app/clip")
         if let eventId, !eventId.isEmpty {
             components?.queryItems = [URLQueryItem(name: "eventId", value: eventId)]
         }

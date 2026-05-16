@@ -1,0 +1,297 @@
+/* ============================================
+   CSS 3D iPhone Mockup Component
+   Pure CSS transforms with animations
+   ============================================ */
+
+.iphone-mockup-scene {
+  perspective: 1200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+}
+
+/* Base iPhone Frame */
+.iphone-frame {
+  position: absolute;
+  width: 390px;
+  height: 844px;
+  border-radius: 44px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  transform-style: preserve-3d;
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Front iPhone - Top-Left, Higher Z-index */
+.iphone-front {
+  z-index: 2;
+  transform: 
+    translateX(-40px) 
+    translateY(-40px) 
+    rotateX(5deg) 
+    rotateY(-15deg) 
+    rotateZ(8deg);
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Back iPhone - Bottom-Right, Lower Z-index */
+.iphone-back {
+  z-index: 1;
+  transform: 
+    translateX(60px) 
+    translateY(60px) 
+    rotateX(-3deg) 
+    rotateY(12deg) 
+    rotateZ(-5deg);
+  animation: float 8s ease-in-out infinite;
+}
+
+/* iPhone Bezel - Dark frame with gradient */
+.iphone-bezel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Dynamic Island */
+.dynamic-island {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 28px;
+  background: #000;
+  border-radius: 14px;
+  z-index: 10;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* iPhone Screen Area */
+.iphone-screen {
+  position: relative;
+  flex: 1;
+  border-radius: 38px;
+  overflow: hidden;
+  background: #000;
+  margin-top: 4px;
+}
+
+/* Screenshot Image */
+.iphone-screen .screenshot {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* iPhone Buttons */
+.iphone-button {
+  position: absolute;
+  background: linear-gradient(135deg, #333 0%, #1a1a1a 100%);
+  border-radius: 2px;
+}
+
+/* Volume Up Button */
+.iphone-volume-up {
+  width: 8px;
+  height: 48px;
+  right: -8px;
+  top: 120px;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* Volume Down Button */
+.iphone-volume-down {
+  width: 8px;
+  height: 48px;
+  right: -8px;
+  top: 180px;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* Power Button */
+.iphone-power {
+  width: 8px;
+  height: 60px;
+  right: -8px;
+  top: 280px;
+  background: linear-gradient(135deg, #666 0%, #333 100%);
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.iphone-front {
+  animation: float 6s ease-in-out infinite;
+}
+
+.iphone-back {
+  animation: float 8s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+/* ============================================
+   Responsive Sizing
+   ============================================ */
+
+/* Medium - Default */
+.mockup-medium .iphone-frame {
+  width: 390px;
+  height: 844px;
+}
+
+.mockup-medium .dynamic-island {
+  width: 120px;
+  height: 28px;
+}
+
+/* Large - Desktop/Tablet */
+@media (min-width: 1024px) {
+  .mockup-large .iphone-frame {
+    width: 450px;
+    height: 970px;
+  }
+
+  .mockup-large .dynamic-island {
+    width: 140px;
+    height: 32px;
+    top: 14px;
+  }
+
+  .mockup-large .iphone-screen {
+    margin-top: 8px;
+  }
+
+  .mockup-large .iphone-volume-up {
+    top: 140px;
+  }
+
+  .mockup-large .iphone-volume-down {
+    top: 210px;
+  }
+
+  .mockup-large .iphone-power {
+    top: 320px;
+  }
+}
+
+/* Small - Mobile */
+@media (max-width: 768px) {
+  .iphone-mockup-scene {
+    min-height: 400px;
+  }
+
+  .mockup-small .iphone-frame,
+  .mockup-medium .iphone-frame {
+    width: 280px;
+    height: 600px;
+  }
+
+  .mockup-small .dynamic-island,
+  .mockup-medium .dynamic-island {
+    width: 90px;
+    height: 22px;
+    top: 10px;
+  }
+
+  .mockup-small .iphone-bezel,
+  .mockup-medium .iphone-bezel {
+    padding: 10px;
+  }
+
+  .mockup-small .iphone-screen,
+  .mockup-medium .iphone-screen {
+    margin-top: 3px;
+  }
+
+  .mockup-small .iphone-volume-up,
+  .mockup-medium .iphone-volume-up {
+    height: 36px;
+    top: 90px;
+  }
+
+  .mockup-small .iphone-volume-down,
+  .mockup-medium .iphone-volume-down {
+    height: 36px;
+    top: 135px;
+  }
+
+  .mockup-small .iphone-power,
+  .mockup-medium .iphone-power {
+    height: 44px;
+    top: 210px;
+  }
+
+  .iphone-front {
+    transform: 
+      translateX(-20px) 
+      translateY(-20px) 
+      rotateX(3deg) 
+      rotateY(-10deg) 
+      rotateZ(5deg);
+  }
+
+  .iphone-back {
+    transform: 
+      translateX(30px) 
+      translateY(30px) 
+      rotateX(-2deg) 
+      rotateY(8deg) 
+      rotateZ(-3deg);
+  }
+}
+
+/* Extra Small - Very small mobile */
+@media (max-width: 480px) {
+  .iphone-mockup-scene {
+    min-height: 350px;
+  }
+
+  .mockup-small .iphone-frame,
+  .mockup-medium .iphone-frame {
+    width: 240px;
+    height: 515px;
+  }
+
+  .iphone-front {
+    transform: 
+      translateX(-15px) 
+      translateY(-15px) 
+      rotateX(2deg) 
+      rotateY(-8deg) 
+      rotateZ(3deg);
+  }
+
+  .iphone-back {
+    transform: 
+      translateX(20px) 
+      translateY(20px) 
+      rotateX(-1deg) 
+      rotateY(6deg) 
+      rotateZ(-2deg);
+  }
+}

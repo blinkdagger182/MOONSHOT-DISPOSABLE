@@ -1,5 +1,4 @@
 import SwiftUI
-import FirebaseFirestore
 import CoreImage.CIFilterBuiltins
 import UIKit
 
@@ -325,46 +324,53 @@ struct CreateEventView: View {
         isSaving = true
         defer { isSaving = false }
 
-        let db = Firestore.firestore()
-        let cleanedName = eventName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let eventId = "\(cleanedName)_\(UUID().uuidString)"
-
-        let eventDetails: [String: Any] = [
-            "eventId": eventId,
-            "eventName": cleanedName,
-            "userName": hostName.trimmingCharacters(in: .whitespacesAndNewlines),
-            "location": locationName.trimmingCharacters(in: .whitespacesAndNewlines),
-            "duration": durationHours,
-            "reveal": revealMode,
-            "numberOfPhotos": shotsPerGuest,
-            "guestLimit": guestLimit,
-            "allowVoiceNotes": allowVoiceNotes,
-            "voiceNoteMaxSeconds": voiceNoteMaxSeconds,
-            "filterStyle": filterStyle,
-            "startTime": Timestamp(date: eventDate)
-        ]
-
         do {
-            try await db.collection("events").document(eventId).setData(eventDetails)
-            try await db.collection("events").document(eventId).collection("participants").addDocument(data: [
-                "name": hostName,
-                "role": "organizer",
-                "userId": UUID().uuidString,
-                "photosTaken": 0
-            ])
-
-            let snapshot = try await db.collection("events").document(eventId).getDocument()
+            let event = try await SupabaseManager.shared.createEvent(
+                title: eventName.trimmingCharacters(in: .whitespacesAndNewlines),
+                hostName: hostName.trimmingCharacters(in: .whitespacesAndNewlines),
+                location: locationName.trimmingCharacters(in: .whitespacesAndNewlines),
+                startsAt: eventDate,
+                durationHours: durationHours,
+                shotsPerGuest: shotsPerGuest,
+                guestLimit: guestLimit,
+                allowVoiceNotes: allowVoiceNotes,
+                voiceNoteMaxSeconds: voiceNoteMaxSeconds,
+                filterStyle: filterStyle,
+                revealMode: revealMode
+            )
+            _ = try await SupabaseManager.shared.addGuest(
+                eventId: event.id,
+                name: hostName.trimmingCharacters(in: .whitespacesAndNewlines),
+                role: "organizer"
+            )
             await MainActor.run {
                 isInEvent = true
-                eventData = snapshot.data()
-                createdEventId = eventId
-                createdEventLink = "https://guest.tetamu.app/clip?eventId=\(eventId)"
+                eventData = eventToDict(event)
+                createdEventId = event.id
+                createdEventLink = "https://guest.tetamu.app/clip?eventId=\(event.id)"
                 saveEventState()
                 step = .share
             }
         } catch {
             print("Create event failed: \(error.localizedDescription)")
         }
+    }
+
+    private func eventToDict(_ e: SupabaseEvent) -> [String: Any] {
+        [
+            "eventId": e.id,
+            "eventName": e.title,
+            "userName": e.host_name,
+            "location": e.location,
+            "duration": e.duration_hours,
+            "reveal": e.reveal_mode,
+            "numberOfPhotos": e.shots_per_guest,
+            "guestLimit": e.guest_limit,
+            "allowVoiceNotes": e.allow_voice_notes,
+            "voiceNoteMaxSeconds": e.voice_note_max_seconds,
+            "filterStyle": e.filter_style,
+            "startTime": ISO8601DateFormatter().date(from: e.starts_at)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+        ]
     }
 
     private func saveEventState() {

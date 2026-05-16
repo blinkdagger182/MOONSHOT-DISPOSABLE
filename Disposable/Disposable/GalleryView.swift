@@ -6,73 +6,11 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
-import FirebaseStorage
 import Photos
 import PhotosUI
 
 struct GalleryView: View {
 
-    private func fetchEventDetails() {
-        let db = Firestore.firestore()
-        db.collection("events").document(eventID).getDocument { document, error in
-            if let document = document, document.exists {
-                let data = document.data()
-                self.revealSetting = data?["reveal"] as? String ?? "Immediately"
-                if let duration = data?["duration"] as? Int, let startTime = data?["startTime"] as? Timestamp {
-                    self.eventEndTime = startTime.dateValue().addingTimeInterval(TimeInterval(duration * 3600))
-                }
-            }
-        }
-    }
-
-    private func listenForPhotoDocs() {
-        isLoading = true
-        let db = Firestore.firestore()
-        let imagesRef = db.collection("events").document(eventID).collection("images")
-
-        imagesRef.order(by: "timestamp", descending: false)
-            .addSnapshotListener { snapshot, error in
-                self.isLoading = false
-                if let error = error {
-                    self.errorMessage = "Error fetching images: \(error.localizedDescription)"
-                    return
-                }
-
-                guard let docs = snapshot?.documents else {
-                    self.errorMessage = "No documents found"
-                    return
-                }
-
-                let allImages = docs.map { doc -> GalleryImage in
-                    let data = doc.data()
-                    return GalleryImage(id: doc.documentID, url: data["url"] as? String ?? "", owner: data["owner"] as? String ?? "Unknown")
-                }
-
-                DispatchQueue.main.async {
-                    self.personalImages = allImages.filter { $0.owner == self.userName }
-                    self.generalImages = allImages
-                }
-            }
-    }
-
-    private func openImage(_ image: GalleryImage) {
-        preloadedFirstImage = nil
-        preloadFirstImage(for: image)
-        selectedImage = image
-        isModalVisible = true
-    }
-
-    private func preloadFirstImage(for image: GalleryImage) {
-        guard let url = URL(string: image.url) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            if let data = data, let uiImage = UIImage(data: data) {
-                DispatchQueue.main.async {
-                    self.preloadedFirstImage = uiImage
-                }
-            }
-        }.resume()
-    }
     // MARK: - Properties
     let eventID: String
     let userName: String
@@ -97,7 +35,6 @@ struct GalleryView: View {
     @State private var selectedUIImage: UIImage?
     @State private var isShowingDeleteConfirmation = false
 
-
     var hasEventEnded: Bool {
         return Date() >= eventEndTime
     }
@@ -110,8 +47,6 @@ struct GalleryView: View {
             }
             .pickerStyle(SegmentedPickerStyle())
             .padding()
-            
-            
 
             if revealSetting == "At the end" && !hasEventEnded {
                 VStack {
@@ -226,7 +161,7 @@ struct GalleryView: View {
                                 .cornerRadius(10)
                         }
 
-                        if let eventURL = URL(string: "https://guest.tetamu.app/html/template.html?eventId=\(eventID)") {
+                        if let eventURL = URL(string: "https://guest.tetamu.app/clip?eventId=\(eventID)") {
                             Link(destination: eventURL) {
                                 Text("Online Gallery")
                                     .frame(maxWidth: .infinity)
@@ -273,7 +208,7 @@ struct GalleryView: View {
                 .padding(.bottom)
             }
         }
-        
+
         .navigationTitle("Gallery")
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(images: $selectedUIImages)
@@ -286,7 +221,7 @@ struct GalleryView: View {
         .alert("Upload selected photos?", isPresented: $isShowingUploadConfirmation, actions: {
             Button("Upload", role: .none) {
                 for img in selectedUIImages {
-                    uploadImageToFirestore(image: img)
+                    uploadImageToSupabase(image: img)
                 }
                 selectedUIImages.removeAll()
             }
@@ -297,7 +232,7 @@ struct GalleryView: View {
 
         .onAppear {
             fetchEventDetails()
-            listenForPhotoDocs()
+            fetchPhotoDocs()
         }
         .alert("Photos deleted.", isPresented: $isShowingDeleteConfirmation) {
             Button("OK", role: .cancel) { }
@@ -314,7 +249,67 @@ struct GalleryView: View {
         }
     }
 
-        private func toggleSelection(_ id: String) {
+    // MARK: - Data fetching
+
+    private func fetchEventDetails() {
+        Task {
+            do {
+                let event = try await SupabaseManager.shared.fetchEvent(id: eventID)
+                await MainActor.run {
+                    self.revealSetting = event.reveal_mode
+                    if let startsAt = ISO8601DateFormatter().date(from: event.starts_at) {
+                        self.eventEndTime = startsAt.addingTimeInterval(TimeInterval(event.duration_hours * 3600))
+                    }
+                }
+            } catch {
+                print("fetchEventDetails failed: \(error)")
+            }
+        }
+    }
+
+    private func fetchPhotoDocs() {
+        isLoading = true
+        Task {
+            do {
+                let photos = try await SupabaseManager.shared.fetchPhotos(eventId: eventID)
+                await MainActor.run {
+                    let allImages = photos.map { p in
+                        GalleryImage(id: p.id ?? UUID().uuidString, url: p.photo_url, owner: p.guest_name)
+                    }
+                    self.personalImages = allImages.filter { $0.owner == self.userName }
+                    self.generalImages = allImages
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Error fetching images: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func openImage(_ image: GalleryImage) {
+        preloadedFirstImage = nil
+        preloadFirstImage(for: image)
+        selectedImage = image
+        isModalVisible = true
+    }
+
+    private func preloadFirstImage(for image: GalleryImage) {
+        guard let url = URL(string: image.url) else { return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data = data, let uiImage = UIImage(data: data) {
+                DispatchQueue.main.async {
+                    self.preloadedFirstImage = uiImage
+                }
+            }
+        }.resume()
+    }
+
+    private func toggleSelection(_ id: String) {
         if selectedImages.contains(id) {
             selectedImages.remove(id)
         } else {
@@ -363,6 +358,7 @@ struct GalleryView: View {
             }
         }
     }
+
     private func requestPhotoPickerPermission() {
         PHPhotoLibrary.requestAuthorization { status in
             if status == .authorized || status == .limited {
@@ -372,49 +368,38 @@ struct GalleryView: View {
             }
         }
     }
-    private func uploadImageToFirestore(image: UIImage) {
+
+    private func uploadImageToSupabase(image: UIImage) {
         guard let data = image.jpegData(compressionQuality: 0.8) else { return }
-        let imageName = "\(UUID().uuidString).jpg"
-        let storageRef = Storage.storage().reference().child("events/\(eventID)/\(imageName)")
-
-        let metadata = StorageMetadata()
-        metadata.contentType = "image/jpeg"
-        metadata.customMetadata = ["user": userName, "eventId": eventID]
-
-        storageRef.putData(data, metadata: metadata) { _, error in
-            if let error = error {
+        Task {
+            do {
+                _ = try await SupabaseManager.shared.uploadPhoto(
+                    eventId: eventID,
+                    guestName: userName,
+                    jpegData: data,
+                    filterStyle: "none",
+                    expiresAt: nil
+                )
+                fetchPhotoDocs()
+            } catch {
                 print("Upload error: \(error.localizedDescription)")
-                return
-            }
-
-            storageRef.downloadURL { url, error in
-                guard let downloadURL = url else { return }
-                let doc = Firestore.firestore().collection("events").document(eventID).collection("images").document()
-                doc.setData([
-                    "url": downloadURL.absoluteString,
-                    "owner": userName,
-                    "timestamp": Date().timeIntervalSince1970
-                ]) { _ in
-                    listenForPhotoDocs()
-                }
             }
         }
     }
+
     private func deleteSelectedPersonalPhotos() {
-        let db = Firestore.firestore()
         let toDelete = personalImages.filter { selectedImages.contains($0.id) }
-
-        for image in toDelete {
-            db.collection("events").document(eventID).collection("images").document(image.id).delete()
-            // Also delete from Firebase Storage (optional)
-            let filename = URL(string: image.url)?.lastPathComponent ?? ""
-            let storageRef = Storage.storage().reference().child("events/\(eventID)/\(filename)")
-            storageRef.delete(completion: nil)
+        Task {
+            for image in toDelete {
+                try? await SupabaseManager.shared.deletePhoto(id: image.id)
+            }
+            await MainActor.run {
+                selectedImages.removeAll()
+                isShowingDeleteConfirmation = true
+            }
+            fetchPhotoDocs()
         }
-
-        selectedImages.removeAll()
     }
-
 }
 
 struct GalleryImage: Identifiable {

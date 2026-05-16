@@ -7,8 +7,6 @@
 
 import AVFoundation
 import UIKit
-import FirebaseStorage
-import FirebaseFirestore
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
@@ -29,8 +27,6 @@ class CameraModel: NSObject, ObservableObject {
     @Published var userName: String = "unknownuser"
     
     private let captureSessionQueue = DispatchQueue(label: "CaptureSessionQueue")
-    private let storage = Storage.storage()
-    private let db = Firestore.firestore()
     
     override init() {
         super.init()
@@ -124,24 +120,9 @@ class CameraModel: NSObject, ObservableObject {
             output.capturePhoto(with: settings, delegate: self)
         }
 
-    private func updateRemainingPhotosInFirebase() {
-        let db = Firestore.firestore()
-        let eventRef = db.collection("events").document(eventID)
-        
-        let userRef = eventRef.collection("participants").whereField("name", isEqualTo: self.userName)
-        
-        userRef.getDocuments { snapshot, error in
-            if let snapshot = snapshot, let doc = snapshot.documents.first {
-                let participantRef = doc.reference
-                participantRef.updateData(["photosTaken": self.maxPhotos - self.remainingPhotos]) { error in
-                    if let error = error {
-                        print("Failed to update remaining photos: \(error.localizedDescription)")
-                    } else {
-                        print("Updated remaining photos in Firebase.")
-                    }
-                }
-            }
-        }
+    private func persistShotsTaken() {
+        let taken = maxPhotos - remainingPhotos
+        UserDefaults.standard.set(taken, forKey: "shots_taken_\(eventID)_\(userName)")
     }
 
 
@@ -177,73 +158,30 @@ class CameraModel: NSObject, ObservableObject {
         previewImage = nil
     }
     
-    // MARK: - Save Photo (Storage + Firestore)
+    // MARK: - Save Photo (Supabase Storage + DB)
     func savePhoto() {
-        self.remainingPhotos -= 1
-        self.updateRemainingPhotosInFirebase()
-        guard let image = previewImage else {
-            print("No preview image to save.")
-            return
-        }
-        
+        guard let image = previewImage else { return }
+        self.remainingPhotos = max(0, self.remainingPhotos - 1)
+        persistShotsTaken()
+
         let outputImage = applySelectedFilter(to: image)
-        
-        guard let data = outputImage.jpegData(compressionQuality: 0.8) else {
-            print("Failed to convert UIImage to JPEG.")
-            return
-        }
-        
-        let imageName = "\(UUID().uuidString).jpg"
-        
-        let storageRef = storage.reference()
-            .child("events/\(eventID)/\(imageName)")
-        
-        let metadata = StorageMetadata()
-        metadata.contentType = "image/jpeg"
-        metadata.customMetadata = [
-            "time": ISO8601DateFormatter().string(from: Date()),
-            "eventId": eventID,
-            "user": userName
-        ]
-        
-        storageRef.putData(data, metadata: metadata) { [weak self] _, error in
-            guard let self = self else { return }
-            if let error = error {
-                print("Error uploading image: \(error.localizedDescription)")
-                return
-            }
-            print("Image uploaded to /events/\(self.eventID)/\(imageName)!")
-            
-            storageRef.downloadURL { url, err in
-                if let err = err {
-                    print("Failed to get download URL: \(err.localizedDescription)")
-                    return
-                }
-                guard let downloadURL = url else { return }
-                
-                let docRef = self.db
-                    .collection("events")
-                    .document(self.eventID)
-                    .collection("images")
-                    .document() // auto-gen an ID
-                
-                let photoDoc: [String: Any] = [
-                    "url": downloadURL.absoluteString,
-                    "owner": self.userName,
-                    "timestamp": Date().timeIntervalSince1970
-                ]
-                
-                docRef.setData(photoDoc) { docError in
-                    if let docError = docError {
-                        print("Error creating Firestore doc: \(docError.localizedDescription)")
-                    } else {
-                        print("Firestore doc created in events/\(self.eventID)/images")
-                    }
-                }
-            }
-        }
-        
+        guard let data = outputImage.jpegData(compressionQuality: 0.8) else { return }
+
         previewImage = nil
+
+        Task {
+            do {
+                _ = try await SupabaseManager.shared.uploadPhoto(
+                    eventId: eventID,
+                    guestName: userName,
+                    jpegData: data,
+                    filterStyle: filterStyle,
+                    expiresAt: nil
+                )
+            } catch {
+                print("Photo upload failed: \(error)")
+            }
+        }
     }
 
     private func applySelectedFilter(to image: UIImage) -> UIImage {
@@ -328,27 +266,19 @@ class CameraModel: NSObject, ObservableObject {
     
     // MARK: - remaining photos
     func fetchRemainingPhotos() {
-        let db = Firestore.firestore()
-        let eventRef = db.collection("events").document(eventID)
-        
-        eventRef.getDocument { document, error in
-            if let document = document, document.exists,
-               let eventData = document.data(),
-               let maxPhotos = eventData["numberOfPhotos"] as? Int {
-                
-                self.maxPhotos = maxPhotos
-                self.filterStyle = (eventData["filterStyle"] as? String) ?? "none"
-                
-                let userRef = eventRef.collection("participants").whereField("name", isEqualTo: self.userName)
-                
-                userRef.getDocuments { snapshot, error in
-                    if let snapshot = snapshot, !snapshot.documents.isEmpty {
-                        let takenPhotos = snapshot.documents.first?.data()["photosTaken"] as? Int ?? 0
-                        DispatchQueue.main.async {
-                            self.remainingPhotos = maxPhotos - takenPhotos
-                        }
-                    }
+        Task {
+            do {
+                let event = try await SupabaseManager.shared.fetchEvent(id: eventID)
+                let shots = event.shots_per_guest
+                // read shots taken from localStorage-equivalent (UserDefaults)
+                let taken = UserDefaults.standard.integer(forKey: "shots_taken_\(eventID)_\(userName)")
+                await MainActor.run {
+                    self.maxPhotos = shots
+                    self.filterStyle = event.filter_style
+                    self.remainingPhotos = max(0, shots - taken)
                 }
+            } catch {
+                print("fetchRemainingPhotos failed: \(error)")
             }
         }
     }

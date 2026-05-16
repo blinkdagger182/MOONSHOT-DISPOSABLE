@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/terms-co",
+      "destination": "/terms"
+    }
+  ]
+}

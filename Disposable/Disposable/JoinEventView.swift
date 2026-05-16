@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
 
 struct JoinEventView: View {
     @Binding var isInEvent: Bool
@@ -120,25 +119,31 @@ struct JoinEventView: View {
     }
 
     private func checkEventExists() {
-        let db = Firestore.firestore()
-        let eventRef = db.collection("events").document(eventIDInput)
-
-        eventRef.getDocument { (document, error) in
-            if let error = error {
-                joinErrorMessage = "Error checking event: \(error.localizedDescription)"
-                showJoinEventAlert = true
-                return
-            }
-
-            guard let document = document, document.exists else {
-                joinErrorMessage = "Event not found. Please check the ID."
-                showJoinEventAlert = true
-                return
-            }
-
-            DispatchQueue.main.async {
-                eventExists = true
-                eventData = document.data()
+        Task {
+            do {
+                let event = try await SupabaseManager.shared.fetchEvent(id: eventIDInput)
+                await MainActor.run {
+                    eventExists = true
+                    eventData = [
+                        "eventId": event.id,
+                        "eventName": event.title,
+                        "userName": event.host_name,
+                        "location": event.location,
+                        "duration": event.duration_hours,
+                        "reveal": event.reveal_mode,
+                        "numberOfPhotos": event.shots_per_guest,
+                        "guestLimit": event.guest_limit,
+                        "allowVoiceNotes": event.allow_voice_notes,
+                        "voiceNoteMaxSeconds": event.voice_note_max_seconds,
+                        "filterStyle": event.filter_style,
+                        "startTime": ISO8601DateFormatter().date(from: event.starts_at)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+                    ]
+                }
+            } catch {
+                await MainActor.run {
+                    joinErrorMessage = "Event not found. Check the ID."
+                    showJoinEventAlert = true
+                }
             }
         }
     }
@@ -150,43 +155,34 @@ struct JoinEventView: View {
             return
         }
 
-        let db = Firestore.firestore()
-        let eventRef = db.collection("events").document(eventIDInput)
-
-        let userId = UUID().uuidString
-        let participantData: [String: Any] = [
-            "name": userName,
-            "role": "participant",
-            "userId": userId
-        ]
-
-        eventRef.collection("participants").addDocument(data: participantData) { error in
-            if let error = error {
-                joinErrorMessage = "Failed to join event: \(error.localizedDescription)"
-            } else {
-                isInEvent = true
-                eventData?["userName"] = userName
-                saveEventState()
-                joinErrorMessage = nil
+        Task {
+            do {
+                _ = try await SupabaseManager.shared.addGuest(
+                    eventId: eventIDInput,
+                    name: userName,
+                    role: "guest"
+                )
+                await MainActor.run {
+                    isInEvent = true
+                    eventData?["userName"] = userName
+                    saveEventState()
+                    joinErrorMessage = nil
+                    showJoinEventAlert = true
+                }
+            } catch {
+                await MainActor.run {
+                    joinErrorMessage = "Failed to join event: \(error.localizedDescription)"
+                    showJoinEventAlert = true
+                }
             }
-            showJoinEventAlert = true
         }
     }
-    private func saveEventState() {
-        if let eventData = eventData {
-            var sanitizedEventData = eventData
-            
-            // Convert FIRTimestamp to a UNIX timestamp (Double)
-            if let startTime = eventData["startTime"] as? Timestamp {
-                sanitizedEventData["startTime"] = startTime.dateValue().timeIntervalSince1970
-            }
 
-            // Save to UserDefaults
-            if let savedData = try? JSONSerialization.data(withJSONObject: sanitizedEventData, options: []) {
-                UserDefaults.standard.set(savedData, forKey: "currentEventData")
-                UserDefaults.standard.set(true, forKey: "isInEvent")
-            }
-        }
+    private func saveEventState() {
+        guard let eventData,
+              let savedData = try? JSONSerialization.data(withJSONObject: eventData, options: []) else { return }
+        UserDefaults.standard.set(savedData, forKey: "currentEventData")
+        UserDefaults.standard.set(true, forKey: "isInEvent")
     }
 
 }

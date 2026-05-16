@@ -26,7 +26,13 @@
         ]
       }
     ],
-    "appAssociation": "NONE"
+    "appAssociation": "NONE",
+    "rewrites": [
+      {
+        "source": "/clip",
+        "destination": "/html/template.html"
+      }
+    ]
   },
   "functions": [
     {
