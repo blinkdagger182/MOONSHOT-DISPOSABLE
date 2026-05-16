@@ -9,7 +9,7 @@ struct BrowserClipExperience: View {
     @State private var reloadToken = UUID()
 
     private var browserURL: URL? {
-        var components = URLComponents(string: "https://guest.tetamu.app/clip")
+        var components = URLComponents(string: "https://tetamu.app/clip")
         if let eventId, !eventId.isEmpty {
             components?.queryItems = [URLQueryItem(name: "eventId", value: eventId)]
         }
@@ -182,7 +182,7 @@ private struct AppClipWebView: UIViewRepresentable {
                 return
             }
 
-            if host == "guest.tetamu.app" || host.hasSuffix(".guest.tetamu.app") {
+            if host == "tetamu.app" || host.hasSuffix(".tetamu.app") {
                 decisionHandler(.allow)
                 return
             }

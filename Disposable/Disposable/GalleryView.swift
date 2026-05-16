@@ -161,7 +161,7 @@ struct GalleryView: View {
                                 .cornerRadius(10)
                         }
 
-                        if let eventURL = URL(string: "https://guest.tetamu.app/clip?eventId=\(eventID)") {
+                        if let eventURL = URL(string: "https://tetamu.app/clip?eventId=\(eventID)") {
                             Link(destination: eventURL) {
                                 Text("Online Gallery")
                                     .frame(maxWidth: .infinity)

@@ -347,7 +347,7 @@ struct CreateEventView: View {
                 isInEvent = true
                 eventData = eventToDict(event)
                 createdEventId = event.id
-                createdEventLink = "https://guest.tetamu.app/clip?eventId=\(event.id)"
+                createdEventLink = "https://tetamu.app/clip?eventId=\(event.id)"
                 saveEventState()
                 step = .share
             }
@@ -430,7 +430,7 @@ struct CreateEventView: View {
             UIBezierPath(roundedRect: CGRect(x: 35, y: 110, width: 220, height: 220), cornerRadius: 18).fill()
             qrImage.draw(in: CGRect(x: 50, y: 125, width: 190, height: 190))
 
-            let footer = NSString(string: "guest.tetamu.app")
+            let footer = NSString(string: "tetamu.app")
             footer.draw(in: CGRect(x: 18, y: 350, width: 254, height: 30), withAttributes: [
                 .font: UIFont.satoshi(size: 16, weight: .medium),
                 .foregroundColor: UIColor.white
