@@ -5,7 +5,9 @@
 
 import SwiftUI
 import FirebaseFirestore
+import FirebaseStorage
 import SceneKit
+import PhotosUI
 
 extension Color {
     init(hex: String) {
@@ -54,6 +56,7 @@ struct HomeView: View {
     @State private var selectedShareTemplate: QRShareTemplateStyle = .plain
     @State private var selectedShareBackground: QRShareBackground = .warm
     @State private var selectedShareQRColor: QRShareColor = .black
+    @State private var coverDraft = HomeCoverDraft()
 
     var body: some View {
         NavigationStack {
@@ -312,7 +315,9 @@ struct HomeView: View {
             HomeEventDetailsSheet(
                 summary: dashboardSummary(),
                 eventName: $homeEventName,
-                saveEventNameAction: saveEventName
+                coverDraft: $coverDraft,
+                saveEventNameAction: saveEventName,
+                saveCoverDraftAction: saveCoverDraft
             ) { selection in
                 navigateHomeModal(to: selection)
             } dismissAction: {
@@ -691,6 +696,14 @@ struct HomeView: View {
         } else if homeEventName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             homeEventName = "Rizhan's House Party"
         }
+
+        coverDraft.title = eventData?["coverTitle"] as? String ?? homeEventName
+        coverDraft.subtitle = eventData?["coverSubtitle"] as? String ?? coverDraft.subtitle
+        coverDraft.buttonTitle = eventData?["coverButtonTitle"] as? String ?? coverDraft.buttonTitle
+        if let styleRaw = eventData?["coverStyle"] as? String,
+           let style = HomeCoverStyle(rawValue: styleRaw) {
+            coverDraft.style = style
+        }
     }
 
     private func saveEventName(_ newValue: String) {
@@ -705,6 +718,57 @@ struct HomeView: View {
         Firestore.firestore().collection("events").document(eventId).updateData([
             "eventName": resolvedName
         ])
+    }
+
+    private func saveCoverDraft(_ draft: HomeCoverDraft) {
+        let resolvedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? homeEventName : draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        coverDraft = draft
+        coverDraft.title = resolvedTitle
+        saveEventName(resolvedTitle)
+
+        eventData?["coverTitle"] = resolvedTitle
+        eventData?["coverSubtitle"] = draft.subtitle
+        eventData?["coverButtonTitle"] = draft.buttonTitle
+        eventData?["coverStyle"] = draft.style.rawValue
+        persistCurrentEventDataLocally()
+
+        guard let eventId = eventData?["eventId"] as? String else { return }
+
+        var payload: [String: Any] = [
+            "coverTitle": resolvedTitle,
+            "coverSubtitle": draft.subtitle,
+            "coverButtonTitle": draft.buttonTitle,
+            "coverStyle": draft.style.rawValue,
+            "eventName": resolvedTitle
+        ]
+
+        if let image = draft.image,
+           let data = image.jpegData(compressionQuality: 0.82) {
+            let storageRef = Storage.storage().reference().child("events/\(eventId)/cover/cover.jpg")
+            let metadata = StorageMetadata()
+            metadata.contentType = "image/jpeg"
+
+            storageRef.putData(data, metadata: metadata) { _, error in
+                if let error {
+                    print("Cover upload error: \(error.localizedDescription)")
+                    Firestore.firestore().collection("events").document(eventId).updateData(payload)
+                    return
+                }
+
+                storageRef.downloadURL { url, _ in
+                    if let url {
+                        payload["coverImageURL"] = url.absoluteString
+                        DispatchQueue.main.async {
+                            eventData?["coverImageURL"] = url.absoluteString
+                            persistCurrentEventDataLocally()
+                        }
+                    }
+                    Firestore.firestore().collection("events").document(eventId).updateData(payload)
+                }
+            }
+        } else {
+            Firestore.firestore().collection("events").document(eventId).updateData(payload)
+        }
     }
 
     private func persistCurrentEventDataLocally() {
@@ -807,6 +871,30 @@ private struct HomeEventSummary {
     let endedText: String
 }
 
+private enum HomeCoverStyle: String, CaseIterable, Identifiable {
+    case polaroid
+    case starter
+    case minimal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .polaroid: return "Polaroid"
+        case .starter: return "Starter"
+        case .minimal: return "Clean"
+        }
+    }
+}
+
+private struct HomeCoverDraft {
+    var style: HomeCoverStyle = .polaroid
+    var title: String = "Rizhan's House Party"
+    var subtitle: String = "23.05.2026"
+    var buttonTitle: String = "Take Photos"
+    var image: UIImage?
+}
+
 private enum QRShareTemplateStyle: String, CaseIterable, Identifiable {
     case plain
     case sparkles
@@ -905,16 +993,20 @@ private enum QRShareDisplayMode {
 private struct HomeEventDetailsSheet: View {
     let summary: HomeEventSummary
     @Binding var eventName: String
+    @Binding var coverDraft: HomeCoverDraft
     let saveEventNameAction: (String) -> Void
+    let saveCoverDraftAction: (HomeCoverDraft) -> Void
     let selectAction: (HomeDashboardModal) -> Void
     let dismissAction: () -> Void
 
+    @Namespace private var coverEditorNamespace
     @State private var isEditingTitle = false
     @State private var titleDraft = ""
     @FocusState private var titleFieldFocused: Bool
     @State private var guestsCanViewGallery = true
     @State private var expandingSelection: HomeDashboardModal?
     @State private var inlineExpandedSelection: HomeDashboardModal?
+    @State private var isCoverEditorPresented = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -997,8 +1089,9 @@ private struct HomeEventDetailsSheet: View {
 
                 HomeDetailsCoverSection(
                     summary: summary,
-                    editAction: beginTitleEdit,
-                    photoAction: {}
+                    namespace: coverEditorNamespace,
+                    editAction: openCoverEditor,
+                    photoAction: openCoverEditor
                 )
 
                 VStack(spacing: 0) {
@@ -1060,8 +1153,12 @@ private struct HomeEventDetailsSheet: View {
                 }
                 .padding(.bottom, 10)
             }
+            .opacity(isCoverEditorPresented ? 0.18 : 1)
+            .blur(radius: isCoverEditorPresented ? 5 : 0)
+            .allowsHitTesting(!isCoverEditorPresented)
+            .accessibilityHidden(isCoverEditorPresented)
             .safeAreaInset(edge: .bottom, spacing: 8) {
-                if inlineExpandedSelection == nil {
+                if inlineExpandedSelection == nil && !isCoverEditorPresented {
                     VStack(spacing: 0) {
                         Button(action: dismissAction) {
                             Text("Dismiss")
@@ -1117,14 +1214,47 @@ private struct HomeEventDetailsSheet: View {
                     removal: .scale(scale: 0.94, anchor: .top).combined(with: .opacity)
                 ))
             }
+
+            if isCoverEditorPresented {
+                HomeCoverEditorScreen(
+                    draft: $coverDraft,
+                    namespace: coverEditorNamespace,
+                    doneAction: closeCoverEditor
+                )
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.34, anchor: .top).combined(with: .opacity),
+                    removal: .scale(scale: 0.92, anchor: .top).combined(with: .opacity)
+                ))
+                .zIndex(3)
+            }
         }
         .onAppear {
             titleDraft = eventName
+            if coverDraft.title == "Rizhan's House Party", eventName != coverDraft.title {
+                coverDraft.title = eventName
+            }
         }
         .onChange(of: eventName) { _, newValue in
             if !isEditingTitle {
                 titleDraft = newValue
             }
+            if !isCoverEditorPresented {
+                coverDraft.title = newValue
+            }
+        }
+    }
+
+    private func openCoverEditor() {
+        coverDraft.title = eventName
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) {
+            isCoverEditorPresented = true
+        }
+    }
+
+    private func closeCoverEditor() {
+        saveCoverDraftAction(coverDraft)
+        withAnimation(.spring(response: 0.44, dampingFraction: 0.9)) {
+            isCoverEditorPresented = false
         }
     }
 
@@ -2210,8 +2340,445 @@ private struct HomeChildOverlayContainer<Content: View>: View {
     }
 }
 
+private enum HomeCoverEditorTool: String, CaseIterable, Identifiable {
+    case photo
+    case title
+    case subtitle
+    case button
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .photo: return "Add Photo"
+        case .title: return "Title"
+        case .subtitle: return "Subtitle"
+        case .button: return "Button"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .photo: return "photo"
+        case .title: return "textformat"
+        case .subtitle: return "calendar"
+        case .button: return "arrow.right"
+        }
+    }
+}
+
+private struct HomeCoverEditorScreen: View {
+    @Binding var draft: HomeCoverDraft
+    let namespace: Namespace.ID
+    let doneAction: () -> Void
+
+    @State private var activeTool: HomeCoverEditorTool = .photo
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @FocusState private var textFieldFocused: Bool
+
+    var body: some View {
+        ZStack {
+            editorBackground
+
+            VStack(spacing: 0) {
+                header
+                    .padding(.top, 12)
+
+                Spacer(minLength: 16)
+
+                coverCarousel
+                    .frame(height: 430)
+
+                Spacer(minLength: 14)
+
+                editorField
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 12)
+
+                toolBar
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 16)
+
+                Button(action: doneAction) {
+                    Text("Done")
+                        .font(.satoshi(size: 18, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 16)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 28))
+        .ignoresSafeArea(edges: .bottom)
+        .onChange(of: selectedPhotoItem) { _, item in
+            loadSelectedPhoto(item)
+        }
+    }
+
+    private var editorBackground: some View {
+        ZStack {
+            if let image = draft.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .blur(radius: 30)
+                    .opacity(0.5)
+                    .ignoresSafeArea()
+            }
+
+            LinearGradient(
+                colors: [
+                    Color(hex: "#AFA78F").opacity(0.92),
+                    Color(hex: "#755846").opacity(0.88),
+                    Color(hex: "#272229").opacity(0.96)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            Color.black.opacity(0.08)
+                .ignoresSafeArea()
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            Text(draft.style.title)
+                .font(.satoshi(size: 25, weight: draft.style == .polaroid ? .italic : .black))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.7)
+
+            Text("Edit your cover screen")
+                .font(.satoshi(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.46))
+        }
+    }
+
+    private var coverCarousel: some View {
+        TabView(selection: $draft.style) {
+            ForEach(HomeCoverStyle.allCases) { style in
+                CoverEditorPhonePreview(draft: draft, style: style, large: true)
+                    .frame(width: 256, height: 410)
+                    .matchedGeometryEffect(
+                        id: style == draft.style ? "cover-phone-preview" : "cover-phone-\(style.id)",
+                        in: namespace
+                    )
+                    .padding(.horizontal, 54)
+                    .tag(style)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+
+    @ViewBuilder
+    private var editorField: some View {
+        switch activeTool {
+        case .photo:
+            Text(draft.image == nil ? "Choose a cover photo for the mockup." : "Cover photo selected. Tap Add Photo to change it.")
+                .font(.satoshi(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.54))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case .title:
+            CoverEditorTextField(title: "Title", text: $draft.title)
+                .focused($textFieldFocused)
+        case .subtitle:
+            CoverEditorTextField(title: "Subtitle", text: $draft.subtitle)
+                .focused($textFieldFocused)
+        case .button:
+            CoverEditorTextField(title: "Button", text: $draft.buttonTitle)
+                .focused($textFieldFocused)
+        }
+    }
+
+    private var toolBar: some View {
+        HStack(spacing: 10) {
+            ForEach(HomeCoverEditorTool.allCases) { tool in
+                if tool == .photo {
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        toolButton(for: tool)
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        activeTool = .photo
+                    })
+                } else {
+                    Button {
+                        activeTool = tool
+                        textFieldFocused = true
+                    } label: {
+                        toolButton(for: tool)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func toolButton(for tool: HomeCoverEditorTool) -> some View {
+        VStack(spacing: 9) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: tool.icon)
+                    .font(.satoshi(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(activeTool == tool ? 0.96 : 0.58))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.white.opacity(activeTool == tool ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.white.opacity(activeTool == tool ? 0.16 : 0.05), lineWidth: 1)
+                    )
+
+                if tool == .photo {
+                    Image(systemName: draft.image == nil ? "plus" : "checkmark")
+                        .font(.satoshi(size: 12, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color(hex: "#574BE7"), in: Circle())
+                        .offset(x: 8, y: -8)
+                }
+            }
+
+            Text(tool.title)
+                .font(.satoshi(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func loadSelectedPhoto(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else { return }
+
+            await MainActor.run {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                    draft.image = image
+                    activeTool = .photo
+                }
+            }
+        }
+    }
+}
+
+private struct CoverEditorTextField: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(.satoshi(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.45))
+
+            TextField(title, text: $text)
+                .font(.satoshi(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 14)
+                .frame(height: 46)
+                .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 13))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        }
+    }
+}
+
+private struct CoverEditorPhonePreview: View {
+    let draft: HomeCoverDraft
+    let style: HomeCoverStyle
+    let large: Bool
+
+    var body: some View {
+        ZStack {
+            phoneBackground
+
+            switch style {
+            case .polaroid:
+                polaroidContent
+            case .starter:
+                starterContent
+            case .minimal:
+                minimalContent
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: large ? 36 : 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: large ? 36 : 22)
+                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: large ? 22 : 10, y: large ? 16 : 6)
+    }
+
+    private var phoneBackground: some View {
+        Group {
+            switch style {
+            case .polaroid:
+                LinearGradient(colors: [Color(hex: "#967BD4"), Color(hex: "#EFAEA3")], startPoint: .top, endPoint: .bottom)
+            case .starter:
+                Color(hex: "#172035")
+            case .minimal:
+                Color.white
+            }
+        }
+    }
+
+    private var polaroidContent: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: large ? 96 : 44)
+
+            ZStack(alignment: .bottom) {
+                PolaroidCardImage(image: draft.image, dateText: draft.subtitle)
+                    .frame(width: large ? 180 : 104, height: large ? 188 : 108)
+                    .rotationEffect(.degrees(-2.5))
+
+                Text(draft.title)
+                    .font(.satoshi(size: large ? 17 : 9, weight: .italic))
+                    .foregroundStyle(Color(hex: "#171419"))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                    .padding(.bottom, large ? 20 : 11)
+                    .rotationEffect(.degrees(-2.5))
+            }
+
+            Spacer()
+            coverButton(dark: true)
+                .padding(.horizontal, large ? 18 : 10)
+                .padding(.bottom, large ? 20 : 10)
+        }
+    }
+
+    private var starterContent: some View {
+        VStack(spacing: 14) {
+            Spacer()
+
+            Text(draft.title)
+                .font(.satoshi(size: large ? 24 : 13, weight: .black))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.64)
+                .padding(.horizontal, large ? 30 : 14)
+
+            Rectangle()
+                .fill(.white.opacity(0.12))
+                .frame(width: large ? 108 : 52, height: 1)
+
+            Text(draft.subtitle)
+                .font(.satoshi(size: large ? 15 : 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+
+            Spacer()
+            coverButton(dark: false)
+                .padding(.horizontal, large ? 18 : 10)
+                .padding(.bottom, large ? 20 : 10)
+        }
+    }
+
+    private var minimalContent: some View {
+        VStack(spacing: 14) {
+            CoverPhoto(image: draft.image)
+                .frame(maxWidth: .infinity)
+                .frame(height: large ? 240 : 124)
+                .clipped()
+
+            Text(draft.title)
+                .font(.satoshi(size: large ? 20 : 11, weight: .black))
+                .foregroundStyle(.black)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, large ? 22 : 10)
+
+            Text(draft.subtitle)
+                .font(.satoshi(size: large ? 12 : 7, weight: .bold))
+                .foregroundStyle(.black.opacity(0.72))
+
+            Spacer()
+            coverButton(dark: false)
+                .padding(.horizontal, large ? 18 : 10)
+                .padding(.bottom, large ? 20 : 10)
+        }
+    }
+
+    private func coverButton(dark: Bool) -> some View {
+        HStack(spacing: 10) {
+            Text(draft.buttonTitle.isEmpty ? "Take Photos" : draft.buttonTitle)
+                .font(.satoshi(size: large ? 12 : 7, weight: .black))
+            Image(systemName: "arrow.right")
+                .font(.satoshi(size: large ? 12 : 7, weight: .bold))
+        }
+        .foregroundStyle(dark ? .white : .black)
+        .frame(maxWidth: .infinity)
+        .frame(height: large ? 36 : 19)
+        .background(dark ? Color(hex: "#3F3140") : Color.white, in: Capsule())
+    }
+}
+
+private struct PolaroidCardImage: View {
+    let image: UIImage?
+    let dateText: String
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                CoverPhoto(image: image)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 42)
+            }
+            .background(Color.white)
+
+            Text(dateText)
+                .font(.satoshi(size: 11, weight: .medium))
+                .foregroundStyle(Color(hex: "#E6D044"))
+                .padding(.trailing, 17)
+                .padding(.bottom, 50)
+        }
+    }
+}
+
+private struct CoverPhoto: View {
+    let image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "#E7DDB8"), Color(hex: "#7D6B61"), Color(hex: "#33272B")],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                Image(systemName: "photo")
+                    .font(.satoshi(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.32))
+            }
+        }
+        .clipped()
+    }
+}
+
 private struct HomeDetailsCoverSection: View {
     let summary: HomeEventSummary
+    let namespace: Namespace.ID
     let editAction: () -> Void
     let photoAction: () -> Void
 
@@ -2250,6 +2817,7 @@ private struct HomeDetailsCoverSection: View {
                     )
                     .frame(width: 218, height: 258)
                     .offset(x: 6)
+                    .matchedGeometryEffect(id: "cover-phone-preview", in: namespace)
 
                     HStack {
                         Spacer()
