@@ -147,7 +147,8 @@ function ClipPage() {
       .single()
       .then(({ data, error }) => {
         if (error || !data) {
-          setLoadError("Event not found.");
+          const detail = error ? `${error.code}: ${error.message}` : "no data";
+          setLoadError(`Event not found. (${detail})`);
           return;
         }
         setEvent(data as EventData);
@@ -419,9 +420,10 @@ function ClipPage() {
   if (loadError) {
     return (
       <div className="min-h-screen bg-[#05070d] flex items-center justify-center text-white p-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Event not found</h1>
-          <p className="text-white/60">{loadError}</p>
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold">Event not found</h1>
+          <p className="text-white/60 text-sm">{loadError}</p>
+          <p className="text-white/30 text-xs font-mono">ID: {eventId ?? "none"}</p>
         </div>
       </div>
     );
