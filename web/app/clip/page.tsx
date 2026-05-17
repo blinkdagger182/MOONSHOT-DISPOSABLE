@@ -509,15 +509,7 @@ function ClipPage() {
         </button>
       </div>
 
-      {/* Reveal lock */}
-      {isLocked && revealAt && (
-        <div className="absolute inset-0 z-30 bg-black/80 flex items-center justify-center text-white text-center p-6">
-          <div>
-            <p className="text-lg font-bold mb-2">Memories locked</p>
-            <p className="text-white/70 text-sm">Reveals at {revealAt.toLocaleString()}</p>
-          </div>
-        </div>
-      )}
+      {/* Reveal lock — only shown inside gallery panel, not here */}
 
       {/* Bottom controls */}
       <div className="relative z-10 mt-auto pb-safe pb-6 px-6">
@@ -610,7 +602,12 @@ function ClipPage() {
             <h2 className="text-white font-bold text-lg">{photos.length} Photos</h2>
             <button onClick={() => setGalleryOpen(false)} className="text-white/60 text-2xl">✕</button>
           </div>
-          {photos.length === 0 ? (
+          {isLocked && revealAt ? (
+            <div className="text-center mt-20 space-y-2">
+              <p className="text-white font-bold text-lg">🔒 Memories locked</p>
+              <p className="text-white/50 text-sm">Photos reveal at {revealAt.toLocaleString()}</p>
+            </div>
+          ) : photos.length === 0 ? (
             <p className="text-white/50 text-center mt-20">No photos yet — be the first!</p>
           ) : (
             <div className="grid grid-cols-3 gap-1">
