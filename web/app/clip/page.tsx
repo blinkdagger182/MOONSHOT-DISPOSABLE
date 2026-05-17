@@ -2,7 +2,8 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { Suspense, useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface EventData {
@@ -69,15 +70,24 @@ function playShutter(ctx: AudioContext) {
   clickOsc.stop(now + 0.032);
 }
 
-export default function ClipPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ eventId?: string }>;
-}) {
+export default function ClipPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#05070d] flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    }>
+      <ClipPage />
+    </Suspense>
+  );
+}
+
+function ClipPage() {
+  const rawSearchParams = useSearchParams();
   const supabase = createClient();
 
   // ── state ──
-  const [eventId, setEventId] = useState<string | null>(null);
+  const eventId = rawSearchParams.get("eventId");
   const [event, setEvent] = useState<EventData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -115,17 +125,12 @@ export default function ClipPage({
   const [isLocked, setIsLocked] = useState(false);
   const [revealAt, setRevealAt] = useState<Date | null>(null);
 
-  // ── init: extract eventId from searchParams ──
-  useEffect(() => {
-    searchParams.then((p) => {
-      if (p.eventId) setEventId(p.eventId);
-      else setLoadError("No event ID in URL.");
-    });
-  }, [searchParams]);
-
   // ── load event ──
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId) {
+      setLoadError("No event ID in URL.");
+      return;
+    }
 
     const localNameKey = `tetamu_name_${eventId}`;
     const localShotsKey = `tetamu_shots_${eventId}`;
