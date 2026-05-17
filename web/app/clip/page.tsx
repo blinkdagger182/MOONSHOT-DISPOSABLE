@@ -104,6 +104,7 @@ function ClipPage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const [useFront, setUseFront] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
   const [shotsLeft, setShotsLeft] = useState(10);
   const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -394,6 +395,18 @@ function ClipPage() {
     setVoiceSeconds(0);
   };
 
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const newState = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: newState } as any] });
+      setTorchOn(newState);
+    } catch {
+      showToast("Torch not supported on this device.");
+    }
+  };
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
@@ -501,12 +514,22 @@ function ClipPage() {
           <p className="text-white font-semibold text-sm truncate max-w-[180px]">{event.title}</p>
           <p className="text-white/60 text-xs">{event.host_name}</p>
         </div>
-        <button
-          onClick={() => setUseFront((f) => !f)}
-          className="bg-black/50 backdrop-blur rounded-full w-10 h-10 flex items-center justify-center text-white text-lg"
-        >
-          🔄
-        </button>
+        <div className="flex gap-2">
+          {!useFront && (
+            <button
+              onClick={toggleTorch}
+              className={`backdrop-blur rounded-full w-10 h-10 flex items-center justify-center text-lg transition-colors ${torchOn ? "bg-yellow-400/80 text-black" : "bg-black/50 text-white"}`}
+            >
+              ⚡
+            </button>
+          )}
+          <button
+            onClick={() => { setUseFront((f) => !f); setTorchOn(false); }}
+            className="bg-black/50 backdrop-blur rounded-full w-10 h-10 flex items-center justify-center text-white text-lg"
+          >
+            🔄
+          </button>
+        </div>
       </div>
 
       {/* Reveal lock — only shown inside gallery panel, not here */}
