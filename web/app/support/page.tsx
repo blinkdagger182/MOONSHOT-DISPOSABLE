@@ -20,7 +20,7 @@ export default function Support() {
                   How do I create an event?
                 </summary>
                 <p className="text-gray-600 mt-4 leading-relaxed">
-                  Download the Disposable app, tap the + button, and fill in your event details. 
+                  Download the Tetamu app, tap the + button, and fill in your event details. 
                   You&apos;ll get a shareable QR code and link instantly.
                 </p>
               </details>
@@ -41,7 +41,7 @@ export default function Support() {
                 </summary>
                 <p className="text-gray-600 mt-4 leading-relaxed">
                   You set the expiration time when creating the event. After that time, 
-                  all photos automatically disappear forever. This is what makes Disposable special!
+                  all photos automatically disappear forever. This is what makes Tetamu special!
                 </p>
               </details>
             </div>

@@ -1,6 +1,6 @@
 {
-  "name": "Disposable - Event Photo Sharing",
-  "short_name": "Disposable",
+  "name": "Tetamu - Event Photo Sharing",
+  "short_name": "Tetamu",
   "description": "Share ephemeral moments with friends at events",
   "start_url": "/",
   "display": "standalone",
@@ -32,20 +32,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-540.png",
-      "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshot-1280.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
     }
   ],
   "shortcuts": [

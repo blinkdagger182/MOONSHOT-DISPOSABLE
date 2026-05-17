@@ -13,7 +13,7 @@ export default function Privacy() {
 
         <h2 className="text-2xl font-bold mb-4">Introduction</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
-          Disposable (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates the Disposable application. 
+          Tetamu (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates the Tetamu application. 
           This page informs you of our policies regarding the collection, use, and disclosure of personal data 
           when you use our service.
         </p>

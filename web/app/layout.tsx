@@ -3,14 +3,14 @@ import "./globals.css";
 import "../css/iphone-mockup.css";
 
 export const metadata: Metadata = {
-  title: "Disposable - Event Photo Sharing",
+  title: "Tetamu - Event Photo Sharing",
   description:
     "Share ephemeral moments with friends. Capture, share, and watch memories disappear.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Disposable",
+    title: "Tetamu",
   },
   formatDetection: {
     telephone: false,
@@ -38,7 +38,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-        <meta name="apple-mobile-web-app-title" content="Disposable" />
+        <meta name="apple-mobile-web-app-title" content="Tetamu" />
       </head>
       <body className="bg-gray-50">{children}</body>
     </html>

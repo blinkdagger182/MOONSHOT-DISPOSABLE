@@ -8,7 +8,7 @@ export default function Home() {
     <main className="min-h-screen bg-gradient-to-br from-white via-purple-50 to-orange-50">
       {/* Navigation */}
       <nav className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto">
-        <div className="text-2xl font-bold text-primary">Disposable</div>
+        <div className="text-2xl font-bold text-primary">Tetamu</div>
         <div className="flex gap-6">
           <Link href="/#features" className="text-gray-600 hover:text-primary">
             Features
@@ -63,7 +63,7 @@ export default function Home() {
       <section id="features" className="px-6 py-20 bg-white">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-4xl font-bold text-center text-gray-900 mb-12">
-            Why Disposable?
+            Why Tetamu?
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
@@ -95,7 +95,7 @@ export default function Home() {
       <footer className="px-6 py-12 bg-gray-900 text-white">
         <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-8">
           <div>
-            <h3 className="font-bold mb-4">Disposable</h3>
+            <h3 className="font-bold mb-4">Tetamu</h3>
             <p className="text-gray-400">Share ephemeral moments with friends</p>
           </div>
           <div>
@@ -118,7 +118,7 @@ export default function Home() {
           </div>
         </div>
         <div className="mt-12 pt-8 border-t border-gray-700 text-center text-gray-400">
-          <p>&copy; 2026 Disposable. All rights reserved.</p>
+          <p>&copy; 2026 Tetamu. All rights reserved.</p>
         </div>
       </footer>
     </main>

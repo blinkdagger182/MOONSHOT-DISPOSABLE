@@ -13,7 +13,7 @@ export default function Terms() {
 
         <h2 className="text-2xl font-bold mb-4">Agreement to Terms</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
-          By accessing and using Disposable, you accept and agree to be bound by the terms 
+          By accessing and using Tetamu, you accept and agree to be bound by the terms 
           and provision of this agreement. If you do not agree to abide by the above, 
           please do not use this service.
         </p>
@@ -21,7 +21,7 @@ export default function Terms() {
         <h2 className="text-2xl font-bold mb-4">Use License</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
           Permission is granted to temporarily download one copy of the materials (information or software) 
-          on Disposable&apos;s service for personal, non-commercial transitory viewing only. 
+          on Tetamu&apos;s service for personal, non-commercial transitory viewing only. 
           This is the grant of a license, not a transfer of title, and under this license you may not:
         </p>
         <ul className="list-disc list-inside space-y-2 text-gray-700 mb-6">
@@ -33,14 +33,14 @@ export default function Terms() {
 
         <h2 className="text-2xl font-bold mb-4">Photo Ownership</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
-          Users retain ownership of photos they upload. By uploading to Disposable, 
+          Users retain ownership of photos they upload. By uploading to Tetamu, 
           you grant us a license to store and display these photos for the duration of the event.
         </p>
 
         <h2 className="text-2xl font-bold mb-4">Disclaimer</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
-          The materials on Disposable&apos;s service are provided on an &apos;as is&apos; basis. 
-          Disposable makes no warranties, expressed or implied, and hereby disclaims and negates 
+          The materials on Tetamu&apos;s service are provided on an &apos;as is&apos; basis. 
+          Tetamu makes no warranties, expressed or implied, and hereby disclaims and negates 
           all other warranties including, without limitation, implied warranties or conditions of 
           merchantability, fitness for a particular purpose, or non-infringement of intellectual property.
         </p>

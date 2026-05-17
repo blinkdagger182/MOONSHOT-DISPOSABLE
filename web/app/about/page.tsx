@@ -5,13 +5,13 @@ export default function About() {
         <a href="/" className="text-primary font-bold hover:underline">
           ← Back
         </a>
-        <h1 className="text-2xl font-bold">About Disposable</h1>
+        <h1 className="text-2xl font-bold">About Tetamu</h1>
       </nav>
 
       <article className="max-w-3xl mx-auto px-6 py-12">
         <h2 className="text-3xl font-bold mb-6">Our Mission</h2>
         <p className="text-gray-700 mb-6 leading-relaxed">
-          Disposable is built for the modern event experience. We believe that photos taken 
+          Tetamu is built for the modern event experience. We believe that photos taken 
           at special moments—weddings, parties, celebrations—should be cherished, not archived. 
           By making photos ephemeral, we create a sense of exclusivity and presence.
         </p>
