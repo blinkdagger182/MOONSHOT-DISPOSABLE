@@ -95,7 +95,6 @@ function ClipPage() {
   const [screen, setScreen] = useState<"welcome" | "name" | "camera">("welcome");
   const [guestName, setGuestName] = useState("");
   const [nameInput, setNameInput] = useState("");
-  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // camera
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -226,19 +225,23 @@ function ClipPage() {
   }, [screen, startCamera]);
 
   // ── join ──
+  const [isJoining, setIsJoining] = useState(false);
+
   const joinEvent = async () => {
-    if (!nameInput.trim() || !termsAccepted || !eventId) return;
+    if (!nameInput.trim() || !eventId || isJoining) return;
+    setIsJoining(true);
     const name = nameInput.trim();
     await supabase.from("guests").insert({
       event_id: eventId,
       name,
       role: "guest",
+      shots_taken: 0,
       source: "web",
     });
-    const localNameKey = `tetamu_name_${eventId}`;
-    localStorage.setItem(localNameKey, name);
+    localStorage.setItem(`tetamu_name_${eventId}`, name);
     setGuestName(name);
     setScreen("camera");
+    setIsJoining(false);
   };
 
   // ── capture ──
@@ -435,56 +438,119 @@ function ClipPage() {
   // Welcome screen
   if (screen === "welcome") {
     return (
-      <div className="min-h-screen bg-[#05070d] flex items-center justify-center p-6">
-        <div className="w-full max-w-sm bg-white/8 rounded-2xl p-8 border border-white/12 text-white text-center space-y-4">
-          <p className="text-white/60 text-sm uppercase tracking-widest">Welcome to</p>
-          <h1 className="text-2xl font-bold">{event.title}</h1>
-          <p className="text-white/70 text-sm">Capture moments, leave voice notes, be part of the story.</p>
-          <button
-            onClick={() => setScreen("name")}
-            className="w-full bg-[#E8D7FF] text-[#09121E] font-bold py-3 rounded-xl"
-          >
-            Join as Guest
-          </button>
+      <div className="relative h-dvh w-full bg-[#05070d] flex flex-col overflow-hidden">
+        {/* Background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0d1120] via-[#05070d] to-black" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-[#E8D7FF]/5 blur-3xl" />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col flex-1 px-6 pt-safe pt-16 pb-safe pb-10">
+          {/* Badge */}
+          <div className="flex justify-center mb-8">
+            <div className="bg-white/10 backdrop-blur border border-white/15 rounded-full px-4 py-1.5">
+              <span className="text-white/60 text-xs uppercase tracking-widest font-medium">You&apos;re invited</span>
+            </div>
+          </div>
+
+          {/* Event info */}
+          <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-[#E8D7FF]/10 border border-[#E8D7FF]/20 flex items-center justify-center text-3xl mb-2">
+              📸
+            </div>
+            <h1 className="text-3xl font-bold text-white tracking-tight">{event.title}</h1>
+            <p className="text-white/50 text-sm">Hosted by <span className="text-white/80 font-medium">{event.host_name}</span></p>
+            {event.location && (
+              <p className="text-white/40 text-xs flex items-center gap-1">
+                <span>📍</span> {event.location}
+              </p>
+            )}
+            <div className="flex gap-3 mt-4">
+              <div className="bg-white/8 border border-white/10 rounded-xl px-4 py-2 text-center">
+                <p className="text-white font-bold text-lg">{event.shots_per_guest}</p>
+                <p className="text-white/50 text-xs">shots</p>
+              </div>
+              {event.allow_voice_notes && (
+                <div className="bg-white/8 border border-white/10 rounded-xl px-4 py-2 text-center">
+                  <p className="text-white font-bold text-lg">🎙</p>
+                  <p className="text-white/50 text-xs">voice notes</p>
+                </div>
+              )}
+              <div className="bg-white/8 border border-white/10 rounded-xl px-4 py-2 text-center">
+                <p className="text-white font-bold text-lg">{event.duration_hours}h</p>
+                <p className="text-white/50 text-xs">event</p>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="space-y-3">
+            <button
+              onClick={() => setScreen("name")}
+              className="w-full bg-[#E8D7FF] text-[#09121E] font-bold py-4 rounded-2xl text-base active:scale-[0.98] transition-transform"
+            >
+              Join as Guest
+            </button>
+            <p className="text-center text-white/30 text-xs">
+              By joining you agree to our{" "}
+              <a href="/terms" className="underline text-white/50">Terms</a> &amp;{" "}
+              <a href="/privacy" className="underline text-white/50">Privacy</a>
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Name / terms screen
+  // Name screen
   if (screen === "name") {
     return (
-      <div className="min-h-screen bg-[#05070d] flex items-center justify-center p-6">
-        <div className="w-full max-w-sm bg-white/8 rounded-2xl p-8 border border-white/12 text-white space-y-4">
-          <h2 className="text-xl font-bold">What&apos;s your name?</h2>
-          <input
-            type="text"
-            maxLength={40}
-            placeholder="Your name"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40"
-          />
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="mt-1 accent-[#E8D7FF]"
-            />
-            <span className="text-sm text-white/70">
-              I accept the{" "}
-              <a href="/terms" className="underline text-white/90">Terms</a> and{" "}
-              <a href="/privacy" className="underline text-white/90">Privacy Policy</a>
-            </span>
-          </label>
+      <div className="relative h-dvh w-full bg-[#05070d] flex flex-col overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0d1120] via-[#05070d] to-black" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-[#E8D7FF]/5 blur-3xl" />
+
+        <div className="relative z-10 flex flex-col flex-1 px-6 pt-safe pt-16 pb-safe pb-10">
+          {/* Back */}
           <button
-            onClick={joinEvent}
-            disabled={!nameInput.trim() || !termsAccepted}
-            className="w-full bg-[#E8D7FF] text-[#09121E] font-bold py-3 rounded-xl disabled:opacity-40"
+            onClick={() => setScreen("welcome")}
+            className="self-start text-white/40 text-sm flex items-center gap-1 mb-10"
           >
-            Continue
+            ← Back
           </button>
+
+          <div className="flex-1 flex flex-col justify-center space-y-8">
+            <div className="space-y-2">
+              <h2 className="text-3xl font-bold text-white tracking-tight">What&apos;s your name?</h2>
+              <p className="text-white/40 text-sm">So the host knows who took each photo.</p>
+            </div>
+
+            <input
+              type="text"
+              maxLength={40}
+              placeholder="Your name"
+              value={nameInput}
+              autoFocus
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && joinEvent()}
+              className="w-full bg-white/8 border border-white/15 rounded-2xl px-5 py-4 text-white text-lg placeholder:text-white/25 focus:outline-none focus:border-[#E8D7FF]/50 transition-colors"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={joinEvent}
+              disabled={!nameInput.trim() || isJoining}
+              className="w-full bg-[#E8D7FF] text-[#09121E] font-bold py-4 rounded-2xl text-base disabled:opacity-40 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+            >
+              {isJoining ? (
+                <div className="w-5 h-5 border-2 border-[#09121E]/40 border-t-[#09121E] rounded-full animate-spin" />
+              ) : "Open Camera →"}
+            </button>
+            <p className="text-center text-white/30 text-xs">
+              By joining you agree to our{" "}
+              <a href="/terms" className="underline text-white/50">Terms</a> &amp;{" "}
+              <a href="/privacy" className="underline text-white/50">Privacy</a>
+            </p>
+          </div>
         </div>
       </div>
     );
