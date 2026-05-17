@@ -100,7 +100,7 @@ final class SupabaseManager {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, _) = try await URLSession.shared.data(for: req)
-        let events = try JSONDecoder().decode([SupabaseEvent].self, from: data)
+        let events = try data.decodeOrThrowSupabaseArray([SupabaseEvent].self)
         guard let event = events.first else { throw SupabaseError.empty }
         return event
     }
@@ -116,7 +116,7 @@ final class SupabaseManager {
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
 
         let (data, _) = try await URLSession.shared.data(for: req)
-        let events = try JSONDecoder().decode([SupabaseEvent].self, from: data)
+        let events = try data.decodeOrThrowSupabaseArray([SupabaseEvent].self)
         guard let event = events.first else { throw SupabaseError.notFound }
         return event
     }
@@ -147,7 +147,7 @@ final class SupabaseManager {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, _) = try await URLSession.shared.data(for: req)
-        let guests = try JSONDecoder().decode([SupabaseGuest].self, from: data)
+        let guests = try data.decodeOrThrowSupabaseArray([SupabaseGuest].self)
         guard let guest = guests.first else { throw SupabaseError.empty }
         return guest
     }
@@ -200,8 +200,10 @@ final class SupabaseManager {
         req.httpBody = processedData
 
         let (_, storageResp) = try await URLSession.shared.data(for: req)
-        guard (storageResp as? HTTPURLResponse)?.statusCode == 200
-                || (storageResp as? HTTPURLResponse)?.statusCode == 200 else {}
+        guard let httpResp = storageResp as? HTTPURLResponse,
+              httpResp.statusCode == 200 || httpResp.statusCode == 201 else {
+            throw URLError(.badServerResponse)
+        }
 
         let publicURL = "\(supabaseURL)/storage/v1/object/public/event-photos/\(path)"
 
@@ -263,7 +265,7 @@ final class SupabaseManager {
         h.forEach { req.setValue($1, forHTTPHeaderField: $0) }
 
         let (data, _) = try await URLSession.shared.data(for: req)
-        return try JSONDecoder().decode([SupabasePhoto].self, from: data)
+        return try data.decodeOrThrowSupabaseArray([SupabasePhoto].self)
     }
 
     // ── Cover image ──────────────────────────────────────────────────────────
@@ -336,4 +338,26 @@ final class SupabaseManager {
 
 enum SupabaseError: Error {
     case empty, notFound, uploadFailed
+    case serverError(String)
+}
+
+private struct SupabaseErrorResponse: Decodable {
+    let message: String?
+    let code: String?
+    let hint: String?
+    let details: String?
+}
+
+extension Data {
+    func decodeOrThrowSupabaseArray<T: Decodable>(_ type: [T].Type) throws -> [T] {
+        do {
+            return try JSONDecoder().decode(type, from: self)
+        } catch let arrayError {
+            if let errResp = try? JSONDecoder().decode(SupabaseErrorResponse.self, from: self),
+               let msg = errResp.message ?? errResp.hint ?? errResp.details {
+                throw SupabaseError.serverError(msg)
+            }
+            throw arrayError
+        }
+    }
 }

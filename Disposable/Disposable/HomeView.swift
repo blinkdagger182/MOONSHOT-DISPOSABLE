@@ -59,6 +59,8 @@ struct HomeView: View {
     @State private var selectedShareQRColor: QRShareColor = .black
     @State private var coverDraft = HomeCoverDraft()
     @State private var isCameraFlowPresented = false
+    @State private var showCreateFlow = false
+    @State private var myCreatedEvents: [[String: Any]] = []
 
     var body: some View {
         NavigationStack {
@@ -84,6 +86,7 @@ struct HomeView: View {
             }
             .onAppear {
                 restoreEventState()
+                loadMyCreatedEvents()
                 syncHomeEventName()
                 phoneShowingBack = false
                 initializeDashboardControlsIfNeeded()
@@ -116,6 +119,21 @@ struct HomeView: View {
                     guests: participantsCount,
                     shots: eventData?["numberOfPhotos"] as? Int ?? 0,
                     voiceNotesEnabled: eventData?["allowVoiceNotes"] as? Bool ?? true
+                )
+            }
+            .fullScreenCover(isPresented: $showCreateFlow) {
+                CreatePOVFlowView(
+                    hostFirstName: hostFirstName,
+                    onPublish: { newDict, newDraft in
+                        addCreatedEvent(newDict)
+                        coverDraft = newDraft
+                        isInEvent = true
+                        eventData = newDict
+                        homeEventName = newDict["eventName"] as? String ?? homeEventName
+                        syncHomeEventName()
+                        generateQRCode()
+                        selectedHomeTab = .cameras
+                    }
                 )
             }
             .sheet(isPresented: $isHomeModalPresented, onDismiss: {
@@ -280,14 +298,21 @@ struct HomeView: View {
             statusText: dashboardStatusText(for: data),
             selectedTab: $selectedHomeTab,
             phoneShowingBack: $phoneShowingBack,
-            scheduleAction: { presentHomeModal(.details) },
-            instantAction: { presentHomeModal(.details) },
+            scheduleAction: { showCreateFlow = true },
+            instantAction: { showCreateFlow = true },
             galleryAction: { presentHomeModal(.details) },
             cameraAction: { isCameraFlowPresented = true },
             editAction: { presentHomeModal(.details) },
             qrAction: { presentHomeModal(.share) },
             shareAction: { presentHomeModal(.share) },
-            settingsTabAction: openSettingsTab
+            settingsTabAction: openSettingsTab,
+            myCreatedEvents: myCreatedEvents,
+            openCameraForEvent: { dict in
+                eventData = dict
+                homeEventName = dict["eventName"] as? String ?? homeEventName
+                syncHomeEventName()
+                isCameraFlowPresented = true
+            }
         )
         .overlay(alignment: .topTrailing) {
             Button(action: { showEndEventAlert = true }) {
@@ -316,14 +341,21 @@ struct HomeView: View {
             statusText: "Up to 10 Guests • Ends 23 May at 23:59",
             selectedTab: $selectedHomeTab,
             phoneShowingBack: $phoneShowingBack,
-            scheduleAction: { presentHomeModal(.details) },
-            instantAction: { presentHomeModal(.details) },
+            scheduleAction: { showCreateFlow = true },
+            instantAction: { showCreateFlow = true },
             galleryAction: { presentHomeModal(.details) },
             cameraAction: { isCameraFlowPresented = true },
             editAction: { presentHomeModal(.details) },
             qrAction: { presentHomeModal(.share) },
             shareAction: { presentHomeModal(.share) },
-            settingsTabAction: openSettingsTab
+            settingsTabAction: openSettingsTab,
+            myCreatedEvents: myCreatedEvents,
+            openCameraForEvent: { dict in
+                eventData = dict
+                homeEventName = dict["eventName"] as? String ?? homeEventName
+                syncHomeEventName()
+                isCameraFlowPresented = true
+            }
         )
     }
 
@@ -450,6 +482,32 @@ struct HomeView: View {
 
     private var currentUserName: String {
         eventData?["userName"] as? String ?? "anonymous"
+    }
+
+    private var hostFirstName: String {
+        let full = currentUserName == "anonymous"
+            ? (myCreatedEvents.first?["userName"] as? String ?? "")
+            : currentUserName
+        return full.components(separatedBy: " ").first ?? full
+    }
+
+    private func loadMyCreatedEvents() {
+        if let data = UserDefaults.standard.data(forKey: "myCreatedEvents"),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            myCreatedEvents = arr
+        }
+    }
+
+    private func saveMyCreatedEvents() {
+        if let data = try? JSONSerialization.data(withJSONObject: myCreatedEvents) {
+            UserDefaults.standard.set(data, forKey: "myCreatedEvents")
+        }
+    }
+
+    private func addCreatedEvent(_ dict: [String: Any]) {
+        myCreatedEvents.removeAll { ($0["eventId"] as? String) == (dict["eventId"] as? String) }
+        myCreatedEvents.insert(dict, at: 0)
+        saveMyCreatedEvents()
     }
 
     private var homeModalDetents: Set<PresentationDetent> {
@@ -3382,6 +3440,8 @@ private struct POVDashboardLayout: View {
     let qrAction: () -> Void
     let shareAction: () -> Void
     let settingsTabAction: () -> Void
+    var myCreatedEvents: [[String: Any]] = []
+    var openCameraForEvent: (([String: Any]) -> Void)? = nil
 
     @State private var dragOffset: CGFloat = 0
     @State private var phoneRestingAngle: Double = 0
@@ -3399,9 +3459,9 @@ private struct POVDashboardLayout: View {
                         createDashboardContent(heroHeight: heroHeight, phoneHeight: phoneHeight)
                     case .cameras:
                         CamerasTabPage(
-                            eventName: eventName,
-                            coverDraft: coverDraft,
+                            events: myCreatedEvents,
                             openCameraAction: cameraAction,
+                            openCameraForEvent: openCameraForEvent ?? { _ in cameraAction() },
                             joinAction: galleryAction,
                             addAction: scheduleAction
                         )
@@ -3654,9 +3714,9 @@ private struct POVDashboardLayout: View {
 }
 
 private struct CamerasTabPage: View {
-    let eventName: String
-    let coverDraft: HomeCoverDraft
+    var events: [[String: Any]] = []
     let openCameraAction: () -> Void
+    let openCameraForEvent: ([String: Any]) -> Void
     let joinAction: () -> Void
     let addAction: () -> Void
 
@@ -3666,9 +3726,7 @@ private struct CamerasTabPage: View {
                 Text("Cameras")
                     .font(.satoshi(size: 30, weight: .bold))
                     .foregroundStyle(.white)
-
                 Spacer()
-
                 Button(action: joinAction) {
                     HStack(spacing: 9) {
                         Image(systemName: "qrcode.viewfinder")
@@ -3693,21 +3751,44 @@ private struct CamerasTabPage: View {
                 .frame(height: 1)
                 .padding(.horizontal, 16)
 
-            Text("ACTIVE")
-                .font(.satoshi(size: 15, weight: .bold))
-                .tracking(4)
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 16)
-                .padding(.top, 28)
+            if !events.isEmpty {
+                Text("ACTIVE")
+                    .font(.satoshi(size: 15, weight: .bold))
+                    .tracking(4)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 28)
 
-            Button(action: openCameraAction) {
-                ActiveCameraCard(eventName: eventName, coverDraft: coverDraft)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(events.indices, id: \.self) { idx in
+                            let ev = events[idx]
+                            Button { openCameraForEvent(ev) } label: {
+                                ActiveCameraCardFromDict(eventDict: ev)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, 22)
+                    .padding(.bottom, 8)
+                }
+            } else {
+                Spacer()
+                VStack(spacing: 12) {
+                    Image(systemName: "camera.fill")
+                        .font(.satoshi(size: 36, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.28))
+                    Text("No active cameras")
+                        .font(.satoshi(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text("Tap + to create your first POV camera")
+                        .font(.satoshi(size: 14))
+                        .foregroundStyle(.white.opacity(0.28))
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 16)
-            .padding(.top, 22)
-
-            Spacer()
         }
         .overlay(alignment: .bottomTrailing) {
             Button(action: addAction) {
@@ -3724,6 +3805,74 @@ private struct CamerasTabPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "#11120D"))
+    }
+}
+
+private struct ActiveCameraCardFromDict: View {
+    let eventDict: [String: Any]
+    @State private var coverImage: UIImage?
+
+    private var eventName: String { eventDict["eventName"] as? String ?? "Event" }
+    private var daysLeft: String {
+        guard let endTs = eventDict["endDate"] as? TimeInterval else { return "" }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: Date(timeIntervalSince1970: endTs)).day ?? 0
+        return days > 0 ? "\(days)d left" : "Ended"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let img = coverImage {
+                    Image(uiImage: img).resizable().scaledToFill()
+                } else {
+                    Color(hex: "#2A2A2A")
+                }
+            }
+            .frame(width: 152, height: 276)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            LinearGradient(colors: [.clear, .black.opacity(0.68)], startPoint: .center, endPoint: .bottom)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if !daysLeft.isEmpty {
+                Text(daysLeft)
+                    .font(.satoshi(size: 14, weight: .bold))
+                    .foregroundStyle(Color(hex: "#2B2928"))
+                    .padding(.horizontal, 13)
+                    .frame(height: 32)
+                    .background(Color(hex: "#DDD0C0"), in: RoundedRectangle(cornerRadius: 8))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(8)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(eventName)
+                    .font(.satoshi(size: 16, weight: .italic))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                HStack(spacing: 7) {
+                    Text("Open Camera")
+                    Image(systemName: "chevron.right").font(.satoshi(size: 15, weight: .bold))
+                }
+                .font(.satoshi(size: 16, weight: .bold))
+                .foregroundStyle(.white.opacity(0.74))
+            }
+            .padding(.horizontal, 13)
+            .padding(.bottom, 16)
+        }
+        .frame(width: 152, height: 276)
+        .onAppear { loadCover() }
+    }
+
+    private func loadCover() {
+        guard let urlStr = eventDict["coverImageUrl"] as? String,
+              let url = URL(string: urlStr) else { return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data, let img = UIImage(data: data) {
+                DispatchQueue.main.async { coverImage = img }
+            }
+        }.resume()
     }
 }
 
@@ -5183,5 +5332,666 @@ private struct HostPreRevealOverviewView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - CreatePOVFlowView
+
+private struct CreatePOVFlowView: View {
+    let hostFirstName: String
+    let onPublish: (_ eventDict: [String: Any], _ coverDraft: HomeCoverDraft) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Namespace private var coverNS
+
+    private enum FlowStep { case name, configure }
+    @State private var flowStep: FlowStep = .name
+
+    private enum ExpandedSetting { case ending, reveal, filter, photos }
+    @State private var expandedSetting: ExpandedSetting? = nil
+
+    // Name step
+    @State private var eventName = ""
+
+    // Configure step
+    @State private var endDate: Date = {
+        var c = DateComponents(); c.day = 6; c.hour = 23; c.minute = 59
+        return Calendar.current.date(byAdding: c, to: Date()) ?? Date()
+    }()
+    @State private var endDateVisibleMonth: Date = {
+        var c = DateComponents(); c.day = 1
+        return Calendar.current.date(byAdding: c, to: Date()) ?? Date()
+    }()
+    @State private var revealMode = "At the end"
+    @State private var filterStyle = "Disposable film"
+    @State private var photosPerPerson = 10
+    @State private var showGallery = true
+    @State private var coverDraft = HomeCoverDraft()
+    @State private var showCoverEditor = false
+    @State private var showFinishUp = false
+
+    // Finish Up step
+    private let guestTiers = [10, 25, 50, 100, 250, 500]
+    @State private var guestTierIndex = 0
+    @State private var isPublishing = false
+
+    private var guestLimit: Int { guestTiers[guestTierIndex] }
+    private var hasCoverPhoto: Bool { coverDraft.image != nil }
+
+    private var suggestedNames: [String] {
+        let fn = hostFirstName.isEmpty ? "Your" : hostFirstName
+        let poss = fn == "Your" ? "Your" : "\(fn)'s"
+        return [
+            "\(fn) & Name",
+            "\(poss) Party",
+            "\(poss) Birthday",
+            "\(fn) & Name's Engagement",
+            "\(poss) Bachelor Party"
+        ]
+    }
+
+    var body: some View {
+        ZStack {
+            Color(hex: "#11120D").ignoresSafeArea()
+            switch flowStep {
+            case .name: nameStep
+            case .configure: configureStep
+            }
+        }
+        .fullScreenCover(isPresented: $showCoverEditor) {
+            HomeCoverEditorScreen(draft: $coverDraft, namespace: coverNS) {
+                showCoverEditor = false
+            }
+        }
+        .sheet(isPresented: $showFinishUp) {
+            finishUpSheet
+                .presentationDetents([.height(380)])
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: eventName) { _, new in
+            coverDraft.title = new
+        }
+    }
+
+    // MARK: Step 1 — Name
+
+    private var nameStep: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.satoshi(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            Text("Add a Name")
+                .font(.satoshi(size: 24, weight: .black))
+                .foregroundStyle(.white)
+                .padding(.top, 28)
+
+            HStack(spacing: 12) {
+                Image(systemName: "pencil")
+                    .font(.satoshi(size: 18, weight: .medium))
+                    .foregroundStyle(Color(hex: "#5C55E8"))
+                TextField("What's the occasion?", text: $eventName)
+                    .font(.satoshi(size: 17, weight: .medium))
+                    .foregroundStyle(.white)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.words)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 54)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
+            .padding(.horizontal, 20)
+            .padding(.top, 28)
+
+            if !hostFirstName.isEmpty && !suggestedNames.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("SUGGESTED")
+                        .font(.satoshi(size: 12, weight: .bold))
+                        .tracking(2)
+                        .foregroundStyle(.white.opacity(0.38))
+                        .padding(.horizontal, 20)
+                        .padding(.top, 32)
+                        .padding(.bottom, 12)
+
+                    ForEach(suggestedNames, id: \.self) { name in
+                        Button {
+                            eventName = name
+                        } label: {
+                            HStack {
+                                Text(name)
+                                    .font(.satoshi(size: 18, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.82))
+                                Spacer()
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Button {
+                coverDraft.title = eventName
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                    flowStep = .configure
+                }
+            } label: {
+                HStack {
+                    Text("Continue")
+                        .font(.satoshi(size: 17, weight: .bold))
+                    Image(systemName: "arrow.right")
+                        .font(.satoshi(size: 16, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    eventName.trimmingCharacters(in: .whitespaces).isEmpty
+                        ? Color.white.opacity(0.12)
+                        : Color(hex: "#5C55E8"),
+                    in: RoundedRectangle(cornerRadius: 28)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(eventName.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 36)
+        }
+    }
+
+    // MARK: Step 2 — Configure
+
+    private var configureStep: some View {
+        GeometryReader { proxy in
+            let phoneH = min(max(proxy.size.height * 0.38, 240), 320)
+            let phoneW = phoneH * 0.46
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Nav bar
+                    HStack(spacing: 12) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.satoshi(size: 20, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 44, height: 44)
+                                .background(Color.white.opacity(0.09), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Text(eventName.isEmpty ? "New Event" : eventName)
+                            .font(.satoshi(size: 20, weight: .black))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+
+                        Button { } label: {
+                            Image(systemName: "pencil")
+                                .font(.satoshi(size: 16, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 36, height: 36)
+                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Button { } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.satoshi(size: 18, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+
+                    // Hero with 3D phone
+                    ZStack(alignment: .topLeading) {
+                        // blurred background
+                        Group {
+                            if let img = coverDraft.image {
+                                Image(uiImage: img).resizable().scaledToFill()
+                                    .blur(radius: 28).opacity(0.45)
+                            } else {
+                                LinearGradient(
+                                    colors: [Color(hex: "#8C8073"), Color(hex: "#555152")],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: phoneH + 80)
+                        .clipped()
+
+                        HStack(alignment: .top) {
+                            Button { showCoverEditor = true } label: {
+                                HStack(spacing: 5) {
+                                    Text("Cover")
+                                        .font(.satoshi(size: 13, weight: .bold))
+                                    Image(systemName: "chevron.right")
+                                        .font(.satoshi(size: 11, weight: .bold))
+                                }
+                                .foregroundStyle(.white.opacity(0.82))
+                                .padding(.horizontal, 12)
+                                .frame(height: 30)
+                                .background(Color.black.opacity(0.28), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 16)
+                            .padding(.top, 12)
+
+                            Spacer()
+
+                            VStack(spacing: 10) {
+                                Button { showCoverEditor = true } label: {
+                                    VStack(spacing: 5) {
+                                        Image(systemName: "iphone")
+                                            .font(.satoshi(size: 22, weight: .medium))
+                                        Text("Edit")
+                                            .font(.satoshi(size: 12, weight: .bold))
+                                    }
+                                    .foregroundStyle(.white)
+                                    .frame(width: 58, height: 58)
+                                    .background(Color.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button { showCoverEditor = true } label: {
+                                    VStack(spacing: 5) {
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(systemName: "photo.fill")
+                                                .font(.satoshi(size: 20, weight: .medium))
+                                            if !hasCoverPhoto {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.satoshi(size: 14, weight: .bold))
+                                                    .foregroundStyle(Color(hex: "#5C55E8"))
+                                                    .offset(x: 6, y: -6)
+                                            }
+                                        }
+                                        Text("Photo")
+                                            .font(.satoshi(size: 12, weight: .bold))
+                                    }
+                                    .foregroundStyle(.white)
+                                    .frame(width: 58, height: 58)
+                                    .background(
+                                        hasCoverPhoto ? Color.black.opacity(0.3) : Color(hex: "#5C55E8").opacity(0.82),
+                                        in: RoundedRectangle(cornerRadius: 14)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.trailing, 14)
+                            .padding(.top, 10)
+                        }
+
+                        // 3D phone centered
+                        Phone3DSceneView(
+                            eventName: coverDraft.title,
+                            coverDraft: coverDraft,
+                            angle: 180,
+                            warmReflection: false
+                        )
+                        .frame(width: phoneW, height: phoneH)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 30)
+                    }
+                    .frame(height: phoneH + 80)
+
+                    // Settings list
+                    VStack(spacing: 0) {
+                        HomeSettingRow(
+                            icon: "calendar", title: "Ending", value: formattedEnd,
+                            expanded: expandedSetting == .ending
+                        ) { toggle(.ending) }
+                        if expandedSetting == .ending {
+                            createInlinePanel(setting: .ending)
+                        }
+
+                        HomeDivider()
+
+                        HomeSettingRow(
+                            icon: "hourglass", title: "Reveal Photos", value: revealMode,
+                            expanded: expandedSetting == .reveal
+                        ) { toggle(.reveal) }
+                        if expandedSetting == .reveal {
+                            createInlinePanel(setting: .reveal)
+                        }
+
+                        HomeDivider()
+
+                        HomeSettingRow(
+                            icon: "photo", title: "Filter", value: filterStyle,
+                            expanded: expandedSetting == .filter
+                        ) { toggle(.filter) }
+                        if expandedSetting == .filter {
+                            createInlinePanel(setting: .filter)
+                        }
+
+                        HomeDivider()
+
+                        HomeSettingRow(
+                            icon: "camera", title: "Photos per Person", value: "\(photosPerPerson) photos",
+                            expanded: expandedSetting == .photos
+                        ) { toggle(.photos) }
+                        if expandedSetting == .photos {
+                            createInlinePanel(setting: .photos)
+                        }
+
+                        HomeDivider()
+
+                        HStack(spacing: 14) {
+                            Image(systemName: "lock.open")
+                                .font(.satoshi(size: 17, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.55))
+                                .frame(width: 26)
+                            Text("Guests can view gallery")
+                                .font(.satoshi(size: 16, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.92))
+                            Spacer()
+                            Toggle("", isOn: $showGallery)
+                                .tint(Color(hex: "#5C55E8"))
+                                .labelsHidden()
+                                .scaleEffect(1.05)
+                        }
+                        .frame(height: 64)
+                    }
+                    .padding(.horizontal, 16)
+                    .background(Color.black.opacity(0.18))
+                    .padding(.top, 8)
+
+                    // CTA
+                    Button {
+                        if hasCoverPhoto { showFinishUp = true }
+                        else { showCoverEditor = true }
+                    } label: {
+                        Text(hasCoverPhoto ? "Continue" : "Add a Photo to Continue")
+                            .font(.satoshi(size: 17, weight: .bold))
+                            .foregroundStyle(hasCoverPhoto ? .white : .white.opacity(0.45))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                hasCoverPhoto ? Color(hex: "#5C55E8") : Color.white.opacity(0.1),
+                                in: RoundedRectangle(cornerRadius: 28)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 24)
+                    .padding(.bottom, 36)
+                }
+            }
+        }
+    }
+
+    private var formattedEnd: String {
+        let df = DateFormatter()
+        df.dateFormat = "EEE d MMM • HH:mm"
+        let tz = TimeZone.current.abbreviation() ?? "GMT"
+        return "\(df.string(from: endDate)) \(tz)"
+    }
+
+    private func toggle(_ setting: ExpandedSetting) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            expandedSetting = expandedSetting == setting ? nil : setting
+        }
+    }
+
+    @ViewBuilder
+    private func createInlinePanel(setting: ExpandedSetting) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch setting {
+            case .ending:
+                EndingCalendarSelector(selectedDate: $endDate, visibleMonth: $endDateVisibleMonth)
+            case .reveal:
+                createPills(["Immediately", "At the end"], binding: $revealMode)
+            case .filter:
+                HStack(spacing: 12) {
+                    Button { filterStyle = "None" } label: {
+                        CompactFilterCard(title: "None", selected: filterStyle == "None", warm: false)
+                    }.buttonStyle(.plain)
+                    Button { filterStyle = "Disposable film" } label: {
+                        CompactFilterCard(title: "Disposable Film", selected: filterStyle == "Disposable film", warm: true)
+                    }.buttonStyle(.plain)
+                }
+            case .photos:
+                createPills(["5", "10", "15", "20", "25"], binding: Binding(
+                    get: { "\(photosPerPerson)" },
+                    set: { photosPerPerson = Int($0) ?? photosPerPerson }
+                ))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#1D2027"), Color(hex: "#171922")],
+                startPoint: .top, endPoint: .bottom
+            ),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
+        .padding(.vertical, 6)
+        .transition(.asymmetric(
+            insertion: .move(edge: .top).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
+        ))
+    }
+
+    private func createPills(_ options: [String], binding: Binding<String>) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(options, id: \.self) { opt in
+                Button { binding.wrappedValue = opt } label: {
+                    SelectablePill(opt, selected: binding.wrappedValue == opt)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: Finish Up sheet
+
+    private var finishUpSheet: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { showFinishUp = false } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.satoshi(size: 18, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Text("Finish Up")
+                    .font(.satoshi(size: 20, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button { } label: {
+                    Image(systemName: "questionmark")
+                        .font(.satoshi(size: 16, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+
+            Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1).padding(.top, 16)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("How many participants?")
+                        .font(.satoshi(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Pricing scales for more guests")
+                        .font(.satoshi(size: 13))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                Spacer()
+                Text("Up to \(guestLimit)")
+                    .font(.satoshi(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+
+            // Tier picker
+            HStack(spacing: 6) {
+                ForEach(guestTiers.indices, id: \.self) { idx in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(idx <= guestTierIndex ? Color(hex: "#5C55E8") : Color.white.opacity(0.12))
+                        .frame(height: 48)
+                        .onTapGesture { guestTierIndex = idx }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+
+            HStack {
+                Text("Price")
+                    .font(.satoshi(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                Text(guestTierIndex == 0 ? "FREE" : "$\(guestTierIndex * 5)")
+                    .font(.satoshi(size: 15, weight: .black))
+                    .foregroundStyle(guestTierIndex == 0 ? Color(hex: "#5C55E8") : .white)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+
+            Spacer()
+
+            HStack(spacing: 12) {
+                Button {
+                    showFinishUp = false
+                } label: {
+                    Text("Preview")
+                        .font(.satoshi(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 26))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    publishEvent()
+                } label: {
+                    if isPublishing {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("Publish")
+                            .font(.satoshi(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(Color(hex: "#5C55E8"), in: RoundedRectangle(cornerRadius: 26))
+                .buttonStyle(.plain)
+                .disabled(isPublishing)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 28)
+        }
+        .background(Color(hex: "#18191F"))
+    }
+
+    // MARK: Publish
+
+    private func publishEvent() {
+        guard !isPublishing else { return }
+        isPublishing = true
+
+        let name = eventName.trimmingCharacters(in: .whitespaces)
+        let hostName = hostFirstName.isEmpty ? "Host" : hostFirstName
+        let filterRaw = filterStyle == "Disposable film" ? "vintage" : "none"
+        let revealRaw = revealMode == "Immediately" ? "Immediately" : "At the end"
+        let startDate = Date()
+        let durationHours = max(1, Int(endDate.timeIntervalSince(startDate) / 3600))
+
+        Task {
+            do {
+                let event = try await SupabaseManager.shared.createEvent(
+                    title: name,
+                    hostName: hostName,
+                    location: "",
+                    startsAt: startDate,
+                    durationHours: durationHours,
+                    shotsPerGuest: photosPerPerson,
+                    guestLimit: guestLimit,
+                    allowVoiceNotes: true,
+                    voiceNoteMaxSeconds: 120,
+                    filterStyle: filterRaw,
+                    revealMode: revealRaw
+                )
+
+                _ = try? await SupabaseManager.shared.addGuest(
+                    eventId: event.id,
+                    name: hostName,
+                    role: "organizer"
+                )
+
+                var coverImageUrl: String? = nil
+                if let img = coverDraft.image,
+                   let jpeg = img.jpegData(compressionQuality: 0.85) {
+                    coverImageUrl = try? await SupabaseManager.shared.uploadCoverImage(
+                        eventId: event.id,
+                        jpegData: jpeg
+                    )
+                }
+
+                let dict: [String: Any] = [
+                    "eventId": event.id,
+                    "eventName": event.title,
+                    "userName": hostName,
+                    "location": event.location,
+                    "duration": event.duration_hours,
+                    "reveal": event.reveal_mode,
+                    "numberOfPhotos": event.shots_per_guest,
+                    "guestLimit": event.guest_limit,
+                    "allowVoiceNotes": event.allow_voice_notes,
+                    "voiceNoteMaxSeconds": event.voice_note_max_seconds,
+                    "filterStyle": event.filter_style,
+                    "startTime": startDate.timeIntervalSince1970,
+                    "endDate": endDate.timeIntervalSince1970,
+                    "coverImageUrl": coverImageUrl ?? "",
+                    "coverStyle": coverDraft.style.rawValue,
+                    "coverTitle": coverDraft.title,
+                    "coverSubtitle": coverDraft.subtitle,
+                    "coverButtonTitle": coverDraft.buttonTitle
+                ]
+
+                await MainActor.run {
+                    isPublishing = false
+                    showFinishUp = false
+                    onPublish(dict, coverDraft)
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isPublishing = false
+                    print("Publish error: \(error)")
+                }
+            }
+        }
     }
 }

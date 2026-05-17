@@ -375,12 +375,7 @@ struct CreateEventView: View {
 
     private func saveEventState() {
         if let eventData = eventData {
-            var sanitizedEventData = eventData
-            if let startTime = eventData["startTime"] as? Timestamp {
-                sanitizedEventData["startTime"] = startTime.dateValue().timeIntervalSince1970
-            }
-
-            if let savedData = try? JSONSerialization.data(withJSONObject: sanitizedEventData, options: []) {
+            if let savedData = try? JSONSerialization.data(withJSONObject: eventData, options: []) {
                 UserDefaults.standard.set(savedData, forKey: "currentEventData")
                 UserDefaults.standard.set(true, forKey: "isInEvent")
             }
