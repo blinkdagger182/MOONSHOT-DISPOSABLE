@@ -87,6 +87,16 @@ struct HomeView: View {
             .onAppear {
                 restoreEventState()
                 loadMyCreatedEvents()
+
+                // Heal stale eventData: if stored event has no valid Supabase ID,
+                // replace it with the most recently created event from myCreatedEvents
+                if (eventData?["eventId"] as? String) == nil || (eventData?["eventId"] as? String) == "noEvent" {
+                    if let first = myCreatedEvents.first {
+                        eventData = first
+                        isInEvent = true
+                    }
+                }
+
                 syncHomeEventName()
                 phoneShowingBack = false
                 initializeDashboardControlsIfNeeded()
@@ -461,6 +471,7 @@ struct HomeView: View {
     private func presentHomeModal(_ modal: HomeDashboardModal) {
         currentHomeModal = modal
         homeModalMeasuredHeight = contentHeight(for: modal)
+        if modal == .share { generateQRCode() }
         isHomeModalPresented = true
     }
 
@@ -630,7 +641,7 @@ struct HomeView: View {
     private func shareEventWebsite() {
         guard let eventId = eventData?["eventId"] as? String else { return }
 
-        let eventURL = "https://tetamu.app/clip?eventId=\(eventId)"
+        let eventURL = "https://tetamu.app/clips?eventId=\(eventId)"
         let message = "Check out the full gallery for the event! \(eventURL)"
 
         let activityVC = UIActivityViewController(activityItems: [message], applicationActivities: nil)
@@ -715,9 +726,12 @@ struct HomeView: View {
     }
 
     private func generateQRCode() {
-        guard let eventId = eventData?["eventId"] as? String else { return }
+        // Prefer myCreatedEvents (guaranteed Supabase-backed) over stale eventData
+        let eventId = (myCreatedEvents.first?["eventId"] as? String)
+            ?? (eventData?["eventId"] as? String)
+        guard let eventId, !eventId.isEmpty else { return }
 
-        let url = "https://tetamu.app/clip?eventId=\(eventId)"
+        let url = "https://tetamu.app/clips?eventId=\(eventId)"
         guard let data = url.data(using: .utf8),
               let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
 
@@ -726,12 +740,17 @@ struct HomeView: View {
 
         guard let ciImage = filter.outputImage else { return }
 
-        let transform = CGAffineTransform(scaleX: 12, y: 12)
-        let scaledImage = ciImage.transformed(by: transform)
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return }
 
-        let context = CIContext()
-        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
-            self.qrCodeImage = UIImage(cgImage: cgImage)
+        // Composite black QR onto white background — prevents transparent/black-box display
+        let size = CGSize(width: cgImage.width, height: cgImage.height)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        self.qrCodeImage = renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIImage(cgImage: cgImage).draw(in: CGRect(origin: .zero, size: size))
         }
     }
 
@@ -2164,11 +2183,10 @@ private struct QRShareTemplateCard: View {
     @ViewBuilder
     private var qrContent: some View {
         if let qrCodeImage {
-            Image(uiImage: qrCodeImage.withRenderingMode(.alwaysTemplate))
+            Image(uiImage: qrCodeImage)
                 .resizable()
                 .interpolation(.none)
                 .scaledToFit()
-                .foregroundStyle(qrColor.color)
         } else {
             Image(systemName: "qrcode")
                 .resizable()
@@ -3445,6 +3463,7 @@ private struct POVDashboardLayout: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var phoneRestingAngle: Double = 0
+    @State private var heroPageIndex: Int = 0
 
     var body: some View {
         GeometryReader { proxy in
@@ -3489,8 +3508,43 @@ private struct POVDashboardLayout: View {
 
     private func createDashboardContent(heroHeight: CGFloat, phoneHeight: CGFloat) -> some View {
         VStack(spacing: 12) {
-            homeHeroCard(phoneHeight: phoneHeight)
-                .frame(height: heroHeight)
+            if myCreatedEvents.count > 1 {
+                VStack(spacing: 8) {
+                    TabView(selection: $heroPageIndex) {
+                        ForEach(Array(myCreatedEvents.enumerated()), id: \.offset) { i, dict in
+                            EventHeroCard(
+                                dict: dict,
+                                activeCoverDraft: coverDraft,
+                                isActive: i == 0,
+                                phoneHeight: phoneHeight,
+                                phoneShowingBack: $phoneShowingBack,
+                                dragOffset: $dragOffset,
+                                restingAngle: $phoneRestingAngle,
+                                editAction: editAction,
+                                cameraAction: cameraAction,
+                                shareAction: shareAction,
+                                qrAction: qrAction
+                            )
+                            .tag(i)
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: heroHeight)
+
+                    HStack(spacing: 6) {
+                        ForEach(0..<myCreatedEvents.count, id: \.self) { i in
+                            Circle()
+                                .fill(i == heroPageIndex ? Color.white : Color.white.opacity(0.3))
+                                .frame(width: i == heroPageIndex ? 8 : 6, height: i == heroPageIndex ? 8 : 6)
+                                .animation(.spring(response: 0.3), value: heroPageIndex)
+                        }
+                    }
+                }
+            } else {
+                homeHeroCard(phoneHeight: phoneHeight)
+                    .frame(height: heroHeight)
+            }
 
             VStack(spacing: 12) {
                 Button(action: scheduleAction) {
@@ -3710,6 +3764,148 @@ private struct POVDashboardLayout: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(systemName))
+    }
+}
+
+// ── Swipeable event hero card (used in multi-event carousel) ──────────────────
+private struct EventHeroCard: View {
+    let dict: [String: Any]
+    let activeCoverDraft: HomeCoverDraft
+    let isActive: Bool
+    let phoneHeight: CGFloat
+    @Binding var phoneShowingBack: Bool
+    @Binding var dragOffset: CGFloat
+    @Binding var restingAngle: Double
+    let editAction: () -> Void
+    let cameraAction: () -> Void
+    let shareAction: () -> Void
+    let qrAction: () -> Void
+
+    @State private var loadedImage: UIImage? = nil
+
+    private var eventName: String { dict["eventName"] as? String ?? "" }
+    private var coverImageUrl: String { dict["coverImageUrl"] as? String ?? "" }
+
+    private var displayDraft: HomeCoverDraft {
+        if isActive { return activeCoverDraft }
+        var d = HomeCoverDraft()
+        d.title = dict["coverTitle"] as? String ?? eventName
+        d.subtitle = dict["coverSubtitle"] as? String ?? ""
+        d.buttonTitle = dict["coverButtonTitle"] as? String ?? "Take Photos"
+        if let raw = dict["coverStyle"] as? String {
+            d.style = HomeCoverStyle(rawValue: raw) ?? .polaroid
+        }
+        d.image = loadedImage
+        return d
+    }
+
+    private var endText: String {
+        guard let ts = dict["endDate"] as? TimeInterval else { return "" }
+        let df = DateFormatter()
+        df.dateFormat = "d MMM • HH:mm"
+        return "Ends \(df.string(from: Date(timeIntervalSince1970: ts)))"
+    }
+
+    private var guestLimit: Int { dict["guestLimit"] as? Int ?? 10 }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                Text("HOSTING")
+                    .font(.satoshi(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .tracking(1.3)
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+                Spacer()
+            }
+            .padding(.top, 10)
+            .padding(.horizontal, 12)
+
+            ZStack {
+                Text(eventName)
+                    .font(.satoshi(size: 29, weight: .italic))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+                HStack {
+                    Spacer()
+                    Button(action: editAction) {
+                        Image(systemName: "pencil")
+                            .font(.satoshi(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 52, height: 38)
+                            .background(Color.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 22)
+
+            Text("Share with friends!")
+                .font(.satoshi(size: 18, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.top, 8)
+
+            SwipeablePhoneMockup(
+                eventName: displayDraft.title,
+                coverDraft: displayDraft,
+                showingBack: $phoneShowingBack,
+                dragOffset: $dragOffset,
+                restingAngle: $restingAngle
+            )
+            .frame(height: phoneHeight)
+            .padding(.top, 18)
+
+            Text("Up to \(guestLimit) Guests • \(endText)")
+                .font(.satoshi(size: 17, weight: .medium))
+                .foregroundStyle(.white.opacity(0.42))
+                .multilineTextAlignment(.center)
+                .padding(.top, 16)
+                .padding(.horizontal, 20)
+
+            HStack(spacing: 14) {
+                dashboardToolButton(systemName: "camera", action: cameraAction)
+                dashboardToolButton(systemName: "square.and.arrow.up", action: shareAction)
+                dashboardToolButton(systemName: "qrcode", action: qrAction)
+            }
+            .padding(.top, 18)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#8C8073"), Color(hex: "#69635F"), Color(hex: "#555152")],
+                startPoint: .top, endPoint: .bottom
+            ),
+            in: RoundedRectangle(cornerRadius: 34)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 34).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .task {
+            guard !isActive, !coverImageUrl.isEmpty, let url = URL(string: coverImageUrl) else { return }
+            if let (data, _) = try? await URLSession.shared.data(from: url),
+               let img = UIImage(data: data) {
+                loadedImage = img
+            }
+        }
+    }
+
+    private func dashboardToolButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.satoshi(size: 24, weight: .medium))
+                .foregroundStyle(.white.opacity(0.84))
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -5349,6 +5545,7 @@ private struct CreatePOVFlowView: View {
 
     private enum ExpandedSetting { case ending, reveal, filter, photos }
     @State private var expandedSetting: ExpandedSetting? = nil
+    @State private var expandingRow: ExpandedSetting? = nil
 
     // Name step
     @State private var eventName = ""
@@ -5518,224 +5715,234 @@ private struct CreatePOVFlowView: View {
         GeometryReader { proxy in
             let phoneH = min(max(proxy.size.height * 0.38, 240), 320)
             let phoneW = phoneH * 0.46
+            let safeBottom = proxy.safeAreaInsets.bottom
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Nav bar
-                    HStack(spacing: 12) {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.satoshi(size: 20, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.09), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-
-                        Spacer()
-
-                        Text(eventName.isEmpty ? "New Event" : eventName)
-                            .font(.satoshi(size: 20, weight: .black))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-
-                        Button { } label: {
-                            Image(systemName: "pencil")
-                                .font(.satoshi(size: 16, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .frame(width: 36, height: 36)
-                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-
-                        Spacer()
-
-                        Button { } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.satoshi(size: 18, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-
-                    // Hero with 3D phone
-                    ZStack(alignment: .topLeading) {
-                        // blurred background
-                        Group {
-                            if let img = coverDraft.image {
-                                Image(uiImage: img).resizable().scaledToFill()
-                                    .blur(radius: 28).opacity(0.45)
-                            } else {
-                                LinearGradient(
-                                    colors: [Color(hex: "#8C8073"), Color(hex: "#555152")],
-                                    startPoint: .top, endPoint: .bottom
-                                )
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: phoneH + 80)
-                        .clipped()
-
-                        HStack(alignment: .top) {
-                            Button { showCoverEditor = true } label: {
-                                HStack(spacing: 5) {
-                                    Text("Cover")
-                                        .font(.satoshi(size: 13, weight: .bold))
-                                    Image(systemName: "chevron.right")
-                                        .font(.satoshi(size: 11, weight: .bold))
-                                }
-                                .foregroundStyle(.white.opacity(0.82))
-                                .padding(.horizontal, 12)
-                                .frame(height: 30)
-                                .background(Color.black.opacity(0.28), in: Capsule())
+            ZStack(alignment: .bottom) {
+                // ── Scrollable content ────────────────────────────────────────
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // Nav bar
+                        HStack(spacing: 12) {
+                            Button { dismiss() } label: {
+                                Image(systemName: "xmark")
+                                    .font(.satoshi(size: 20, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.09), in: Circle())
                             }
                             .buttonStyle(.plain)
-                            .padding(.leading, 16)
-                            .padding(.top, 12)
 
                             Spacer()
 
-                            VStack(spacing: 10) {
-                                Button { showCoverEditor = true } label: {
-                                    VStack(spacing: 5) {
-                                        Image(systemName: "iphone")
-                                            .font(.satoshi(size: 22, weight: .medium))
-                                        Text("Edit")
-                                            .font(.satoshi(size: 12, weight: .bold))
-                                    }
-                                    .foregroundStyle(.white)
-                                    .frame(width: 58, height: 58)
-                                    .background(Color.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
-                                }
-                                .buttonStyle(.plain)
+                            Text(eventName.isEmpty ? "New Event" : eventName)
+                                .font(.satoshi(size: 20, weight: .black))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
 
-                                Button { showCoverEditor = true } label: {
-                                    VStack(spacing: 5) {
-                                        ZStack(alignment: .topTrailing) {
-                                            Image(systemName: "photo.fill")
-                                                .font(.satoshi(size: 20, weight: .medium))
-                                            if !hasCoverPhoto {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.satoshi(size: 14, weight: .bold))
-                                                    .foregroundStyle(Color(hex: "#5C55E8"))
-                                                    .offset(x: 6, y: -6)
-                                            }
-                                        }
-                                        Text("Photo")
-                                            .font(.satoshi(size: 12, weight: .bold))
-                                    }
-                                    .foregroundStyle(.white)
-                                    .frame(width: 58, height: 58)
-                                    .background(
-                                        hasCoverPhoto ? Color.black.opacity(0.3) : Color(hex: "#5C55E8").opacity(0.82),
-                                        in: RoundedRectangle(cornerRadius: 14)
+                            Button { } label: {
+                                Image(systemName: "pencil")
+                                    .font(.satoshi(size: 16, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer()
+
+                            Button { } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.satoshi(size: 18, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+
+                        // Hero with 3D phone
+                        ZStack(alignment: .topLeading) {
+                            Group {
+                                if let img = coverDraft.image {
+                                    Image(uiImage: img).resizable().scaledToFill()
+                                        .blur(radius: 28).opacity(0.45)
+                                } else {
+                                    LinearGradient(
+                                        colors: [Color(hex: "#8C8073"), Color(hex: "#555152")],
+                                        startPoint: .top, endPoint: .bottom
                                     )
                                 }
-                                .buttonStyle(.plain)
                             }
-                            .padding(.trailing, 14)
-                            .padding(.top, 10)
-                        }
-
-                        // 3D phone centered
-                        Phone3DSceneView(
-                            eventName: coverDraft.title,
-                            coverDraft: coverDraft,
-                            angle: 180,
-                            warmReflection: false
-                        )
-                        .frame(width: phoneW, height: phoneH)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 30)
-                    }
-                    .frame(height: phoneH + 80)
-
-                    // Settings list
-                    VStack(spacing: 0) {
-                        HomeSettingRow(
-                            icon: "calendar", title: "Ending", value: formattedEnd,
-                            expanded: expandedSetting == .ending
-                        ) { toggle(.ending) }
-                        if expandedSetting == .ending {
-                            createInlinePanel(setting: .ending)
-                        }
-
-                        HomeDivider()
-
-                        HomeSettingRow(
-                            icon: "hourglass", title: "Reveal Photos", value: revealMode,
-                            expanded: expandedSetting == .reveal
-                        ) { toggle(.reveal) }
-                        if expandedSetting == .reveal {
-                            createInlinePanel(setting: .reveal)
-                        }
-
-                        HomeDivider()
-
-                        HomeSettingRow(
-                            icon: "photo", title: "Filter", value: filterStyle,
-                            expanded: expandedSetting == .filter
-                        ) { toggle(.filter) }
-                        if expandedSetting == .filter {
-                            createInlinePanel(setting: .filter)
-                        }
-
-                        HomeDivider()
-
-                        HomeSettingRow(
-                            icon: "camera", title: "Photos per Person", value: "\(photosPerPerson) photos",
-                            expanded: expandedSetting == .photos
-                        ) { toggle(.photos) }
-                        if expandedSetting == .photos {
-                            createInlinePanel(setting: .photos)
-                        }
-
-                        HomeDivider()
-
-                        HStack(spacing: 14) {
-                            Image(systemName: "lock.open")
-                                .font(.satoshi(size: 17, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.55))
-                                .frame(width: 26)
-                            Text("Guests can view gallery")
-                                .font(.satoshi(size: 16, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.92))
-                            Spacer()
-                            Toggle("", isOn: $showGallery)
-                                .tint(Color(hex: "#5C55E8"))
-                                .labelsHidden()
-                                .scaleEffect(1.05)
-                        }
-                        .frame(height: 64)
-                    }
-                    .padding(.horizontal, 16)
-                    .background(Color.black.opacity(0.18))
-                    .padding(.top, 8)
-
-                    // CTA
-                    Button {
-                        if hasCoverPhoto { showFinishUp = true }
-                        else { showCoverEditor = true }
-                    } label: {
-                        Text(hasCoverPhoto ? "Continue" : "Add a Photo to Continue")
-                            .font(.satoshi(size: 17, weight: .bold))
-                            .foregroundStyle(hasCoverPhoto ? .white : .white.opacity(0.45))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(
-                                hasCoverPhoto ? Color(hex: "#5C55E8") : Color.white.opacity(0.1),
-                                in: RoundedRectangle(cornerRadius: 28)
+                            .frame(height: phoneH + 80)
+                            .clipped()
+
+                            HStack(alignment: .top) {
+                                Button { showCoverEditor = true } label: {
+                                    HStack(spacing: 5) {
+                                        Text("Cover")
+                                            .font(.satoshi(size: 13, weight: .bold))
+                                        Image(systemName: "chevron.right")
+                                            .font(.satoshi(size: 11, weight: .bold))
+                                    }
+                                    .foregroundStyle(.white.opacity(0.82))
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 30)
+                                    .background(Color.black.opacity(0.28), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.leading, 16)
+                                .padding(.top, 12)
+
+                                Spacer()
+
+                                VStack(spacing: 10) {
+                                    Button { showCoverEditor = true } label: {
+                                        VStack(spacing: 5) {
+                                            Image(systemName: "iphone")
+                                                .font(.satoshi(size: 22, weight: .medium))
+                                            Text("Edit")
+                                                .font(.satoshi(size: 12, weight: .bold))
+                                        }
+                                        .foregroundStyle(.white)
+                                        .frame(width: 58, height: 58)
+                                        .background(Color.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button { showCoverEditor = true } label: {
+                                        VStack(spacing: 5) {
+                                            ZStack(alignment: .topTrailing) {
+                                                Image(systemName: "photo.fill")
+                                                    .font(.satoshi(size: 20, weight: .medium))
+                                                if !hasCoverPhoto {
+                                                    Image(systemName: "plus.circle.fill")
+                                                        .font(.satoshi(size: 14, weight: .bold))
+                                                        .foregroundStyle(Color(hex: "#5C55E8"))
+                                                        .offset(x: 6, y: -6)
+                                                }
+                                            }
+                                            Text("Photo")
+                                                .font(.satoshi(size: 12, weight: .bold))
+                                        }
+                                        .foregroundStyle(.white)
+                                        .frame(width: 58, height: 58)
+                                        .background(
+                                            hasCoverPhoto ? Color.black.opacity(0.3) : Color(hex: "#5C55E8").opacity(0.82),
+                                            in: RoundedRectangle(cornerRadius: 14)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.trailing, 14)
+                                .padding(.top, 10)
+                            }
+
+                            Phone3DSceneView(
+                                eventName: coverDraft.title,
+                                coverDraft: coverDraft,
+                                angle: 180,
+                                warmReflection: false
                             )
+                            .frame(width: phoneW, height: phoneH)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 30)
+                        }
+                        .frame(height: phoneH + 80)
+
+                        // Settings list — rows only, no inline expansion
+                        VStack(spacing: 0) {
+                            HomeSettingRow(
+                                icon: "calendar", title: "Ending", value: formattedEnd,
+                                expanded: expandingRow == .ending || expandedSetting == .ending
+                            ) { toggle(.ending) }
+                            HomeDivider()
+                            HomeSettingRow(
+                                icon: "hourglass", title: "Reveal Photos", value: revealMode,
+                                expanded: expandingRow == .reveal || expandedSetting == .reveal
+                            ) { toggle(.reveal) }
+                            HomeDivider()
+                            HomeSettingRow(
+                                icon: "photo", title: "Filter", value: filterStyle,
+                                expanded: expandingRow == .filter || expandedSetting == .filter
+                            ) { toggle(.filter) }
+                            HomeDivider()
+                            HomeSettingRow(
+                                icon: "camera", title: "Photos per Person", value: "\(photosPerPerson) photos",
+                                expanded: expandingRow == .photos || expandedSetting == .photos
+                            ) { toggle(.photos) }
+                            HomeDivider()
+                            HStack(spacing: 14) {
+                                Image(systemName: "lock.open")
+                                    .font(.satoshi(size: 17, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.55))
+                                    .frame(width: 26)
+                                Text("Guests can view gallery")
+                                    .font(.satoshi(size: 16, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.92))
+                                Spacer()
+                                Toggle("", isOn: $showGallery)
+                                    .tint(Color(hex: "#5C55E8"))
+                                    .labelsHidden()
+                                    .scaleEffect(1.05)
+                            }
+                            .frame(height: 64)
+                        }
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.18))
+                        .padding(.top, 8)
+
+                        // CTA
+                        Button {
+                            if hasCoverPhoto { showFinishUp = true }
+                            else { showCoverEditor = true }
+                        } label: {
+                            Text(hasCoverPhoto ? "Continue" : "Add a Photo to Continue")
+                                .font(.satoshi(size: 17, weight: .bold))
+                                .foregroundStyle(hasCoverPhoto ? .white : .white.opacity(0.45))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    hasCoverPhoto ? Color(hex: "#5C55E8") : Color.white.opacity(0.1),
+                                    in: RoundedRectangle(cornerRadius: 28)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 24)
+                        .padding(.bottom, 36)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
-                    .padding(.bottom, 36)
+                }
+                .allowsHitTesting(expandedSetting == nil)
+
+                // ── Dimmer ────────────────────────────────────────────────────
+                if expandedSetting != nil {
+                    Color.black.opacity(0.48)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                                expandedSetting = nil
+                            }
+                        }
+                }
+
+                // ── Floating overlay panel ─────────────────────────────────
+                if let setting = expandedSetting {
+                    createOverlayPanel(setting: setting)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, safeBottom + 10)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.82, anchor: .top)
+                                .combined(with: .move(edge: .bottom))
+                                .combined(with: .opacity),
+                            removal: .scale(scale: 0.94, anchor: .top)
+                                .combined(with: .opacity)
+                        ))
                 }
             }
+            .animation(.spring(response: 0.34, dampingFraction: 0.88), value: expandedSetting != nil)
         }
     }
 
@@ -5747,19 +5954,62 @@ private struct CreatePOVFlowView: View {
     }
 
     private func toggle(_ setting: ExpandedSetting) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            expandedSetting = expandedSetting == setting ? nil : setting
+        guard expandingRow == nil else { return }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+            expandingRow = setting
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                expandedSetting = expandedSetting == setting ? nil : setting
+                expandingRow = nil
+            }
         }
     }
 
     @ViewBuilder
-    private func createInlinePanel(setting: ExpandedSetting) -> some View {
+    private func createOverlayPanel(setting: ExpandedSetting) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: panelIcon(for: setting))
+                    .font(.satoshi(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(panelTitle(for: setting))
+                        .font(.satoshi(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                    Text(panelValue(for: setting))
+                        .font(.satoshi(size: 17, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text(panelDescription(for: setting))
+                        .font(.satoshi(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                        expandedSetting = nil
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.satoshi(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.48))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HomeDivider()
+
             switch setting {
             case .ending:
                 EndingCalendarSelector(selectedDate: $endDate, visibleMonth: $endDateVisibleMonth)
             case .reveal:
-                createPills(["Immediately", "At the end"], binding: $revealMode)
+                panelPills(["Immediately", "At the end"], binding: $revealMode)
             case .filter:
                 HStack(spacing: 12) {
                     Button { filterStyle = "None" } label: {
@@ -5770,7 +6020,7 @@ private struct CreatePOVFlowView: View {
                     }.buttonStyle(.plain)
                 }
             case .photos:
-                createPills(["5", "10", "15", "20", "25"], binding: Binding(
+                panelPills(["5", "10", "15", "20", "25"], binding: Binding(
                     get: { "\(photosPerPerson)" },
                     set: { photosPerPerson = Int($0) ?? photosPerPerson }
                 ))
@@ -5786,14 +6036,10 @@ private struct CreatePOVFlowView: View {
             in: RoundedRectangle(cornerRadius: 18)
         )
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 1))
-        .padding(.vertical, 6)
-        .transition(.asymmetric(
-            insertion: .move(edge: .top).combined(with: .opacity),
-            removal: .move(edge: .top).combined(with: .opacity)
-        ))
+        .padding(.vertical, 8)
     }
 
-    private func createPills(_ options: [String], binding: Binding<String>) -> some View {
+    private func panelPills(_ options: [String], binding: Binding<String>) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             ForEach(options, id: \.self) { opt in
                 Button { binding.wrappedValue = opt } label: {
@@ -5801,6 +6047,42 @@ private struct CreatePOVFlowView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    private func panelIcon(for setting: ExpandedSetting) -> String {
+        switch setting {
+        case .ending: return "calendar"
+        case .reveal: return "hourglass"
+        case .filter: return "photo"
+        case .photos: return "camera"
+        }
+    }
+
+    private func panelTitle(for setting: ExpandedSetting) -> String {
+        switch setting {
+        case .ending: return "Ending"
+        case .reveal: return "Reveal Photos"
+        case .filter: return "Filter"
+        case .photos: return "Photos per Person"
+        }
+    }
+
+    private func panelValue(for setting: ExpandedSetting) -> String {
+        switch setting {
+        case .ending: return formattedEnd
+        case .reveal: return revealMode
+        case .filter: return filterStyle
+        case .photos: return "\(photosPerPerson) photos"
+        }
+    }
+
+    private func panelDescription(for setting: ExpandedSetting) -> String {
+        switch setting {
+        case .ending: return "Choose when the camera locks for submissions."
+        case .reveal: return "Set when photos become visible in the gallery."
+        case .filter: return "Set the visual style for POV Camera photos."
+        case .photos: return "Set how many photos each guest can capture."
         }
     }
 
