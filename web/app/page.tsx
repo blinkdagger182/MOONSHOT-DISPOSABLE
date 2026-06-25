@@ -114,7 +114,7 @@ export default function Home() {
           </div>
           <div>
             <h4 className="font-semibold mb-4">Contact</h4>
-            <p className="text-gray-400">hello@disposable.app</p>
+            <p className="text-gray-400">support@tetamu.app</p>
           </div>
         </div>
         <div className="mt-12 pt-8 border-t border-gray-700 text-center text-gray-400">

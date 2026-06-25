@@ -3,8 +3,8 @@ import UIKit
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // These values match the credentials in .env at repo root.
-private let supabaseURL  = "https://vzfrnmrozutaqkpdgygh.supabase.co"
-private let supabaseKey  = "sb_publishable_mpQU7W27wzNQZJLH_uBkmg_dLQxYrEj"
+private let supabaseURL  = "https://wwkxstrbapciphklcxxw.supabase.co"
+private let supabaseKey  = "sb_publishable_UGzgoLNDVzb_8cN3-yKhRA_SRYf_3MR"
 
 // ─── Models ──────────────────────────────────────────────────────────────────
 struct SupabaseEvent: Codable {
@@ -239,6 +239,22 @@ final class SupabaseManager {
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await URLSession.shared.data(for: req)
+    }
+
+    func submitAccountDeletionRequest(name: String, username: String, email: String) async throws {
+        let message = """
+        Account deletion requested from the iOS app.
+        Name: \(name)
+        Username: \(username)
+        Email: \(email)
+        """
+
+        try await submitContactForm(
+            name: name,
+            email: email,
+            message: message,
+            subjects: ["Account deletion request"]
+        )
     }
 
     func deletePhoto(id: String) async throws {

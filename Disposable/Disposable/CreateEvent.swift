@@ -402,8 +402,6 @@ struct CreateEventView: View {
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 290, height: 430))
         return renderer.image { ctx in
-            let rect = CGRect(x: 0, y: 0, width: 290, height: 430)
-
             let cgColors = [theme.top.cgColor, theme.bottom.cgColor] as CFArray
             let colorSpace = CGColorSpaceCreateDeviceRGB()
             let gradient = CGGradient(colorsSpace: colorSpace, colors: cgColors, locations: [0, 1])!

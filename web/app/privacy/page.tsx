@@ -33,7 +33,7 @@ export default function Privacy() {
 
         <h2 className="text-2xl font-bold mb-4">Contact Us</h2>
         <p className="text-gray-700">
-          If you have questions about this Privacy Policy, please contact us at privacy@disposable.app
+          If you have questions about this Privacy Policy, please contact us at support@tetamu.app
         </p>
       </article>
     </main>

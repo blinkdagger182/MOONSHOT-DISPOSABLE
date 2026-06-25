@@ -47,7 +47,7 @@ export default function Terms() {
 
         <h2 className="text-2xl font-bold mb-4">Contact Us</h2>
         <p className="text-gray-700">
-          If you have questions about these Terms, please contact us at legal@disposable.app
+          If you have questions about these Terms, please contact us at support@tetamu.app
         </p>
       </article>
     </main>

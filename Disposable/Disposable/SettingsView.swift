@@ -12,22 +12,8 @@ private enum SettingsRoute: Hashable {
     case faq
     case contact
     case privacy
-    case language
-    case appIcon
-    case interests
-    case supportCodes
     case accountDeletion
     case faqAnswer(FAQItem)
-}
-
-private enum SettingsSheet: Identifiable {
-    case purpose
-
-    var id: String {
-        switch self {
-        case .purpose: return "purpose"
-        }
-    }
 }
 
 struct SettingsView: View {
@@ -38,8 +24,8 @@ struct SettingsView: View {
 
     @AppStorage("profileName") private var profileName = "Rizhan Ruslan"
     @AppStorage("profileUsername") private var profileUsername = "rizhan"
+    @AppStorage("profileEmail") private var profileEmail = ""
     @State private var navigationPath = NavigationPath()
-    @State private var activeSheet: SettingsSheet?
     @State private var alert: SettingsAlert?
 
     var body: some View {
@@ -50,12 +36,9 @@ struct SettingsView: View {
                     profileUsername: profileUsername,
                     openProfile: openProfile,
                     openRoute: openRoute,
-                    openSheet: openSheet,
-                    clearCache: clearCache,
-                    openExternalURL: openExternalURL
+                    clearCache: clearCache
                 )
                 .navigationDestination(for: SettingsRoute.self, destination: destination)
-                .sheet(item: $activeSheet, content: sheetContent)
                 .alert(item: $alert, content: alertContent)
                 .toolbar(.hidden, for: .navigationBar)
                 .toolbar(.hidden, for: .tabBar)
@@ -77,42 +60,25 @@ struct SettingsView: View {
         case .profile:
             ProfileSettingsView(
                 profileName: $profileName,
+                profileEmail: $profileEmail,
                 profileUsername: profileUsername,
                 openRoute: openRoute,
-                openSheet: openSheet,
                 logOut: confirmLogOut
             )
         case .faq:
             FAQSettingsView(openAnswer: { navigationPath.append(SettingsRoute.faqAnswer($0)) })
         case .contact:
-            ContactOptionsView(openExternalURL: openExternalURL) {
-                navigationPath.append(SettingsRoute.profile)
-            }
+            ContactOptionsView(openExternalURL: openExternalURL)
         case .privacy:
             PrivacySettingsView()
-        case .language:
-            LanguageSettingsView()
-        case .appIcon:
-            AppIconSettingsView()
-        case .interests:
-            InterestSettingsView(openPurposeSheet: { activeSheet = .purpose })
-        case .supportCodes:
-            SupportCodesView()
         case .accountDeletion:
-            AccountDeletionView(openExternalURL: openExternalURL)
+            AccountDeletionView(
+                profileName: profileName,
+                profileUsername: profileUsername,
+                profileEmail: profileEmail
+            )
         case .faqAnswer(let item):
             FAQAnswerView(item: item)
-        }
-    }
-
-    @ViewBuilder
-    private func sheetContent(_ sheet: SettingsSheet) -> some View {
-        switch sheet {
-        case .purpose:
-            PurposeSheetView()
-                .presentationDetents([.height(330)])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(24)
         }
     }
 
@@ -122,10 +88,6 @@ struct SettingsView: View {
 
     private func openRoute(_ route: SettingsRoute) {
         navigationPath.append(route)
-    }
-
-    private func openSheet(_ sheet: SettingsSheet) {
-        activeSheet = sheet
     }
 
     private func clearCache() {
@@ -179,13 +141,11 @@ private struct SettingsScreen: View {
     let profileUsername: String
     let openProfile: () -> Void
     let openRoute: (SettingsRoute) -> Void
-    let openSheet: (SettingsSheet) -> Void
     let clearCache: () -> Void
-    let openExternalURL: (String) -> Void
 
     var body: some View {
         SettingsContainer(title: "Settings", showsBackButton: false) {
-            VStack(spacing: 28) {
+            VStack(spacing: 20) {
                 Button(action: openProfile) {
                     ProfileSummaryCard(name: profileName, username: profileUsername)
                 }
@@ -200,35 +160,18 @@ private struct SettingsScreen: View {
                     }
                 }
 
-                SettingsSection(title: "Data") {
-                    SettingsRow(icon: "externaldrive.badge.xmark", title: "Clear Cache", action: clearCache)
-                    SettingsRow(icon: "lock", title: "Privacy") {
+                SettingsSection(title: "Legal") {
+                    SettingsRow(icon: "lock", title: "Privacy Policy") {
                         openRoute(.privacy)
                     }
                 }
 
-                SettingsSection(title: "Get in Touch") {
-                    SettingsRow(icon: "network", title: "Business Inquiries") {
-                        openExternalURL("mailto:hello@pov.camera?subject=Business%20Inquiry")
-                    }
-                    SettingsRow(icon: "sparkles", title: "Jobs at POV") {
-                        openExternalURL("https://pov.camera")
+                SettingsSection(title: "App") {
+                    SettingsRow(icon: "externaldrive.badge.xmark", title: "Clear Cache", action: clearCache)
+                    SettingsRow(icon: "trash", title: "Request Account Deletion") {
+                        openRoute(.accountDeletion)
                     }
                 }
-
-                SettingsSection(title: "Language") {
-                    SettingsRow(icon: "globe", title: "Language") {
-                        openRoute(.language)
-                    }
-                }
-
-                SettingsSection(title: "Customize") {
-                    SettingsRow(icon: "app.badge", title: "App Icon") {
-                        openRoute(.appIcon)
-                    }
-                }
-
-                SocialLinksView(openExternalURL: openExternalURL)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 26)
@@ -238,68 +181,62 @@ private struct SettingsScreen: View {
 
 private struct ProfileSettingsView: View {
     @Binding var profileName: String
+    @Binding var profileEmail: String
 
     let profileUsername: String
     let openRoute: (SettingsRoute) -> Void
-    let openSheet: (SettingsSheet) -> Void
     let logOut: () -> Void
 
     var body: some View {
         SettingsContainer(title: "Profile") {
-            VStack(spacing: 28) {
-                ProfileAvatar(size: 132)
-                    .overlay(alignment: .bottomLeading) {
-                        Button(action: {}) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 26, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.9))
-                                .frame(width: 62, height: 62)
-                                .background(Color(hex: "#5954D8"), in: Circle())
-                                .overlay(Circle().stroke(Color.black, lineWidth: 5))
-                        }
-                        .buttonStyle(.plain)
-                        .offset(x: -22, y: 8)
-                    }
+            VStack(spacing: 20) {
+                ProfileAvatar(size: 100)
 
                 SettingsCard {
-                    HStack(spacing: 18) {
+                    HStack(spacing: 14) {
                         Image(systemName: "person")
                             .settingsIconStyle()
                         TextField("Name", text: $profileName)
-                            .font(.satoshi(size: 21, weight: .medium))
-                            .foregroundStyle(.white)
+                            .font(.satoshi(size: 17, weight: .medium))
+                            .foregroundStyle(.black)
                             .textInputAutocapitalization(.words)
                     }
-                    .frame(height: 62)
-                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .padding(.horizontal, 16)
 
                     SettingsDivider()
 
-                    HStack(spacing: 18) {
+                    HStack(spacing: 14) {
                         Image(systemName: "at")
-                            .settingsIconStyle(size: 32)
+                            .settingsIconStyle(size: 24)
                         Text(profileUsername)
-                            .font(.satoshi(size: 21, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.42))
+                            .font(.satoshi(size: 17, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.5))
                         Spacer()
                         Image(systemName: "lock.fill")
-                            .foregroundStyle(Color.white.opacity(0.34))
+                            .foregroundStyle(Color.black.opacity(0.3))
                     }
-                    .frame(height: 62)
-                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .padding(.horizontal, 16)
+
+                    SettingsDivider()
+
+                    HStack(spacing: 14) {
+                        Image(systemName: "envelope")
+                            .settingsIconStyle(size: 22)
+                        TextField("Email", text: $profileEmail)
+                            .font(.satoshi(size: 17, weight: .medium))
+                            .foregroundStyle(.black)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    .frame(height: 44)
+                    .padding(.horizontal, 16)
                 }
 
                 SettingsSection(title: "Account") {
-                    SettingsRow(icon: "star", title: "Interests") {
-                        openSheet(.purpose)
-                    }
-                    SettingsRow(icon: "rectangle.and.pencil.and.ellipsis", title: "Support Codes") {
-                        openRoute(.supportCodes)
-                    }
                     SettingsRow(icon: "rectangle.portrait.and.arrow.right", title: "Log Out", action: logOut)
-                }
-
-                SettingsSection(title: "Delete") {
                     SettingsRow(icon: "trash", title: "Request Account Deletion") {
                         openRoute(.accountDeletion)
                     }
@@ -313,16 +250,15 @@ private struct ProfileSettingsView: View {
 
 private struct ContactOptionsView: View {
     let openExternalURL: (String) -> Void
-    let openProfile: () -> Void
 
     var body: some View {
         SettingsContainer(title: "Contact Us") {
             SettingsSection {
                 SettingsRow(icon: "bubble.left", title: "Text", subtitle: "Recommended") {
-                    openExternalURL("sms:+15551234567")
+                    openExternalURL("sms:+60189089070")
                 }
                 SettingsRow(icon: "envelope", title: "Email", subtitle: "Replies may take longer") {
-                    openExternalURL("mailto:support@pov.camera?subject=POV%20Support")
+                    openExternalURL("mailto:support@tetamu.app")
                 }
             }
             .padding(.horizontal, 20)
@@ -335,8 +271,8 @@ private struct FAQSettingsView: View {
 
     var body: some View {
         SettingsContainer(title: "FAQ") {
-            VStack(spacing: 30) {
-                SettingsSection(title: "About POV") {
+            VStack(spacing: 24) {
+                SettingsSection(title: "About Tetamu") {
                     ForEach(FAQItem.about) { item in
                         SettingsRow(title: item.question) {
                             openAnswer(item)
@@ -363,19 +299,19 @@ private struct FAQAnswerView: View {
 
     var body: some View {
         SettingsContainer(title: "FAQ") {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 Text(item.question)
-                    .font(.satoshi(size: 23, weight: .bold))
-                    .foregroundStyle(.white)
+                    .font(.satoshi(size: 19, weight: .bold))
+                    .foregroundStyle(.black)
 
                 Text(item.answer)
-                    .font(.satoshi(size: 16, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.72))
+                    .font(.satoshi(size: 15, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.6))
                     .lineSpacing(5)
             }
-            .padding(22)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 22))
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 20)
         }
     }
@@ -384,7 +320,7 @@ private struct FAQAnswerView: View {
 private struct PrivacySettingsView: View {
     var body: some View {
         SettingsContainer(title: "Privacy") {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 SettingsSection(title: "Legal") {
                     NavigationLink {
                         PrivacyPolicyView()
@@ -398,208 +334,256 @@ private struct PrivacySettingsView: View {
                     }
                 }
 
-                Text("POV stores event photos temporarily for each event and uses contact details only when you submit support requests.")
-                    .font(.satoshi(size: 16, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.62))
+                Text("Tetamu stores event photos temporarily for each event and uses contact details only when you submit support requests.")
+                    .font(.satoshi(size: 14, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
             }
-            .padding(.horizontal, 20)
-        }
-    }
-}
-
-private struct LanguageSettingsView: View {
-    @AppStorage("preferredLanguage") private var preferredLanguage = "English"
-
-    private let languages = ["English", "Bahasa Malaysia", "Français", "Español"]
-
-    var body: some View {
-        SettingsContainer(title: "Language") {
-            SettingsSection {
-                ForEach(languages, id: \.self) { language in
-                    Button {
-                        preferredLanguage = language
-                    } label: {
-                        HStack {
-                            SettingsRowContent(icon: "globe", title: language, showsChevron: false)
-                            if preferredLanguage == language {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundStyle(Color(hex: "#8D86FF"))
-                                    .padding(.trailing, 18)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-}
-
-private struct AppIconSettingsView: View {
-    @AppStorage("selectedAppIcon") private var selectedAppIcon = "Default"
-
-    private let icons = ["Default", "Midnight", "Party"]
-
-    var body: some View {
-        SettingsContainer(title: "App Icon") {
-            SettingsSection {
-                ForEach(icons, id: \.self) { icon in
-                    Button {
-                        selectedAppIcon = icon
-                    } label: {
-                        HStack {
-                            SettingsRowContent(icon: icon == "Default" ? "app.badge" : "circle.hexagongrid", title: icon, showsChevron: false)
-                            if selectedAppIcon == icon {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundStyle(Color(hex: "#8D86FF"))
-                                    .padding(.trailing, 18)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-}
-
-private struct InterestSettingsView: View {
-    let openPurposeSheet: () -> Void
-
-    var body: some View {
-        SettingsContainer(title: "Interests") {
-            SettingsSection {
-                SettingsRow(icon: "sparkles", title: "What do you use POV for?", action: openPurposeSheet)
-                SettingsRow(icon: "camera", title: "Event Photography", action: {})
-                SettingsRow(icon: "person.2", title: "Guest Sharing", action: {})
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-}
-
-private struct SupportCodesView: View {
-    var body: some View {
-        SettingsContainer(title: "Support Codes") {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("No support codes yet.")
-                    .font(.satoshi(size: 19, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("Codes attached to your account will appear here.")
-                    .font(.satoshi(size: 16, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.6))
-            }
-            .padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 22))
             .padding(.horizontal, 20)
         }
     }
 }
 
 private struct AccountDeletionView: View {
-    let openExternalURL: (String) -> Void
+    let profileName: String
+    let profileUsername: String
+    let profileEmail: String
+
+    @AppStorage("accountDeletionRequestSubmitted") private var hasSubmittedRequest = false
+    @State private var isSubmitting = false
+    @State private var toast: SettingsToastData?
+    @State private var showsConfirmation = false
 
     var body: some View {
         SettingsContainer(title: "Delete Account") {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 Text("Request account deletion")
-                    .font(.satoshi(size: 20, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("Send a deletion request from the email address attached to your account. Support will confirm once the request has been processed.")
-                    .font(.satoshi(size: 15, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.68))
-                    .lineSpacing(5)
-                Button {
-                    openExternalURL("mailto:support@pov.camera?subject=Account%20Deletion%20Request")
-                } label: {
-                    Text("Email Deletion Request")
-                        .font(.satoshi(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color(hex: "#5954D8"), in: RoundedRectangle(cornerRadius: 16))
+                    .font(.satoshi(size: 17, weight: .bold))
+                    .foregroundStyle(.black)
+                Text("Send a deletion request from the email address attached to your account. We will review it and follow up at that email address.")
+                    .font(.satoshi(size: 14, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.6))
+                    .lineSpacing(4)
+
+                if profileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Add your email in Profile before sending a deletion request.")
+                        .font(.satoshi(size: 13, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
                 }
+
+                Button {
+                    showsConfirmation = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        }
+
+                        Text(buttonTitle)
+                    }
+                        .font(.satoshi(size: 15, weight: .bold))
+                        .foregroundStyle(.white.opacity(buttonEnabled ? 1 : 0.55))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(buttonEnabled ? Color.black : Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(!buttonEnabled)
             }
-            .padding(22)
-            .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 22))
+            .padding(18)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 20)
         }
-    }
-}
+        .overlay(alignment: .top) {
+            if let toast {
+                SettingsToastView(data: toast)
+                    .padding(.top, 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .overlay {
+            if showsConfirmation {
+                ZStack {
+                    Color.black.opacity(0.28)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+                                showsConfirmation = false
+                            }
+                        }
 
-private struct PurposeSheetView: View {
-    @AppStorage("povPurpose") private var povPurpose = "Personal Events"
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 28) {
-            Text("What do you want to use POV for?")
-                .font(.satoshi(size: 24, weight: .black))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 14) {
-                PurposeOption(
-                    title: "Personal Events",
-                    systemImage: "person.crop.square",
-                    isSelected: povPurpose == "Personal Events"
-                ) {
-                    povPurpose = "Personal Events"
-                    dismiss()
-                }
-                PurposeOption(
-                    title: "Business Events",
-                    systemImage: "camera.fill",
-                    isSelected: povPurpose == "Business Events"
-                ) {
-                    povPurpose = "Business Events"
-                    dismiss()
+                    SettingsConfirmationCard(
+                        title: "Send deletion request?",
+                        message: "We’ll send your request now and follow up at \(sanitizedEmail). You won’t be able to send it twice from this device.",
+                        isSubmitting: isSubmitting,
+                        confirmTitle: "Send request",
+                        cancelAction: {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+                                showsConfirmation = false
+                            }
+                        },
+                        confirmAction: {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+                                showsConfirmation = false
+                            }
+                            submitDeletionRequest()
+                        }
+                    )
+                    .padding(.horizontal, 20)
+                    .transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 34)
-        .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(hex: "#1D2226"))
+    }
+
+    private var sanitizedEmail: String {
+        profileEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var buttonEnabled: Bool {
+        !isSubmitting && !hasSubmittedRequest && !sanitizedEmail.isEmpty
+    }
+
+    private var buttonTitle: String {
+        if hasSubmittedRequest { return "Request sent" }
+        if isSubmitting { return "Sending request..." }
+        return "Send deletion request"
+    }
+
+    private func submitDeletionRequest() {
+        guard buttonEnabled else { return }
+
+        isSubmitting = true
+
+        Task {
+            do {
+                try await SupabaseManager.shared.submitAccountDeletionRequest(
+                    name: profileName,
+                    username: profileUsername,
+                    email: sanitizedEmail
+                )
+
+                await MainActor.run {
+                    isSubmitting = false
+                    hasSubmittedRequest = true
+                    showToast(
+                        title: "Request sent",
+                        message: "Your deletion request has been sent. We’ll review it and follow up at \(sanitizedEmail)."
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    isSubmitting = false
+                    showToast(
+                        title: "Couldn’t send request",
+                        message: "Please try again in a moment."
+                    )
+                }
+            }
+        }
+    }
+
+    private func showToast(title: String, message: String) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.9)) {
+            toast = SettingsToastData(title: title, message: message)
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.9)) {
+                    toast = nil
+                }
+            }
+        }
     }
 }
 
-private struct PurposeOption: View {
+private struct SettingsToastData: Equatable {
     let title: String
-    let systemImage: String
-    let isSelected: Bool
-    let action: () -> Void
+    let message: String
+}
+
+private struct SettingsConfirmationCard: View {
+    let title: String
+    let message: String
+    let isSubmitting: Bool
+    let confirmTitle: String
+    let cancelAction: () -> Void
+    let confirmAction: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 18) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 48, weight: .regular))
-                    .foregroundStyle(isSelected ? Color(hex: "#8D86FF") : .white)
-                    .frame(height: 70)
-                Text(title)
-                    .font(.satoshi(size: 16, weight: .black))
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
+                .font(.satoshi(size: 18, weight: .bold))
+                .foregroundStyle(.black)
+
+            Text(message)
+                .font(.satoshi(size: 14, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.62))
+                .lineSpacing(4)
+
+            HStack(spacing: 10) {
+                Button(action: cancelAction) {
+                    Text("Cancel")
+                        .font(.satoshi(size: 15, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmitting)
+
+                Button(action: confirmAction) {
+                    HStack(spacing: 8) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        }
+
+                        Text(isSubmitting ? "Sending..." : confirmTitle)
+                    }
+                    .font(.satoshi(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmitting)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 160)
-            .background(Color(hex: "#26282D"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color(hex: "#8D86FF") : Color.white.opacity(0.12), lineWidth: 1.4)
-            )
         }
-        .buttonStyle(.plain)
+        .padding(18)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 20, y: 10)
+    }
+}
+
+private struct SettingsToastView: View {
+    let data: SettingsToastData
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(data.title)
+                .font(.satoshi(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+            Text(data.message)
+                .font(.satoshi(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.black.opacity(0.92), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 20)
     }
 }
 
@@ -618,7 +602,7 @@ private struct SettingsContainer<Content: View>: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#0D0E0C")
+            Color(hex: "#F2F2F2")
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -626,11 +610,13 @@ private struct SettingsContainer<Content: View>: View {
 
                 ScrollView(showsIndicators: false) {
                     content
-                        .padding(.top, 22)
+                        .padding(.top, 16)
                         .padding(.bottom, 116)
                 }
             }
         }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -642,8 +628,8 @@ private struct SettingsHeader: View {
     var body: some View {
         ZStack {
             Text(title)
-                .font(.satoshi(size: 24, weight: .black))
-                .foregroundStyle(.white)
+                .font(.satoshi(size: 20, weight: .black))
+                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
 
             if showsBackButton {
@@ -651,18 +637,18 @@ private struct SettingsHeader: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 26, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                        .frame(width: 58, height: 58)
-                        .background(Color.white.opacity(0.07), in: Circle())
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color.black)
+                        .frame(width: 44, height: 44)
+                        .background(Color.black.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 20)
             }
         }
-        .frame(height: 78)
-        .padding(.top, 22)
+        .frame(height: 56)
+        .padding(.top, 10)
     }
 }
 
@@ -671,29 +657,29 @@ private struct ProfileSummaryCard: View {
     let username: String
 
     var body: some View {
-        HStack(spacing: 18) {
-            ProfileAvatar(size: 66)
+        HStack(spacing: 14) {
+            ProfileAvatar(size: 52)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(name)
-                    .font(.satoshi(size: 21, weight: .black))
-                    .foregroundStyle(.white)
+                    .font(.satoshi(size: 17, weight: .black))
+                    .foregroundStyle(.black)
                     .lineLimit(1)
                 Text("@\(username)")
-                    .font(.satoshi(size: 17, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.42))
+                    .font(.satoshi(size: 14, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.5))
                     .lineLimit(1)
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.22))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.25))
         }
-        .padding(.horizontal, 18)
-        .frame(height: 82)
-        .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 24))
+        .padding(.horizontal, 16)
+        .frame(height: 68)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -734,13 +720,13 @@ private struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             if let title {
                 Text(title.uppercased())
-                    .font(.satoshi(size: 14, weight: .black))
-                    .tracking(4)
-                    .foregroundStyle(Color.white.opacity(0.36))
-                    .padding(.leading, 24)
+                    .font(.satoshi(size: 13, weight: .bold))
+                    .tracking(3)
+                    .foregroundStyle(Color.black.opacity(0.4))
+                    .padding(.leading, 6)
             }
 
             SettingsCard {
@@ -757,8 +743,8 @@ private struct SettingsCard<Content: View>: View {
         VStack(spacing: 0) {
             content
         }
-        .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 24))
-        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -799,37 +785,37 @@ private struct SettingsRowContent: View {
     }
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             if let icon {
                 Image(systemName: icon)
                     .settingsIconStyle()
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.satoshi(size: 20, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.88))
+                    .font(.satoshi(size: 17, weight: .medium))
+                    .foregroundStyle(Color.black)
                     .multilineTextAlignment(.leading)
                     .lineLimit(3)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.85)
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(.satoshi(size: 15, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.42))
+                        .font(.satoshi(size: 13, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.5))
                 }
             }
 
-            Spacer(minLength: 14)
+            Spacer(minLength: 10)
 
             if showsChevron {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 25, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.24))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.25))
             }
         }
-        .padding(.horizontal, 18)
-        .frame(minHeight: subtitle == nil ? 62 : 72)
+        .padding(.horizontal, 16)
+        .frame(minHeight: subtitle == nil ? 44 : 56)
         .contentShape(Rectangle())
     }
 }
@@ -837,9 +823,9 @@ private struct SettingsRowContent: View {
 private struct SettingsDivider: View {
     var body: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.055))
+            .fill(Color.black.opacity(0.08))
             .frame(height: 1)
-            .padding(.leading, 78)
+            .padding(.leading, 16)
     }
 }
 
@@ -847,14 +833,14 @@ private struct SocialLinksView: View {
     let openExternalURL: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("SOCIALS")
-                .font(.satoshi(size: 14, weight: .black))
-                .tracking(4)
-                .foregroundStyle(Color.white.opacity(0.36))
-                .padding(.leading, 24)
+                .font(.satoshi(size: 13, weight: .bold))
+                .tracking(3)
+                .foregroundStyle(Color.black.opacity(0.4))
+                .padding(.leading, 6)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 SocialButton(title: "Instagram", icon: "camera.aperture") {
                     openExternalURL("https://www.instagram.com/pov.camera")
                 }
@@ -876,17 +862,17 @@ private struct SocialButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.black)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 64)
-                    .background(Color(hex: "#191919"), in: RoundedRectangle(cornerRadius: 22))
+                    .frame(height: 52)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
 
                 Text(title)
-                    .font(.satoshi(size: 14, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.78))
+                    .font(.satoshi(size: 13, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.6))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -913,29 +899,31 @@ struct AppBottomTabBar: View {
             bottomButton("camera", isSelected: selectedTab == .camera, action: cameraAction)
             bottomButton("gearshape", isSelected: selectedTab == .settings, action: settingsAction)
         }
-        .frame(height: 68)
-        .padding(.horizontal, 34)
-        .padding(.bottom, 12)
-        .background(Color(hex: "#0D0E0C"))
+        .frame(height: 60)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 10)
+        .background(Color.white)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 1)
+        }
     }
 
     private func bottomButton(_ systemName: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.satoshi(size: 28, weight: .medium))
-                .foregroundStyle(isSelected ? Color(hex: "#8A84FF") : Color.white.opacity(0.42))
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 22)
-                            .fill(Color(hex: "#302E59"))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22)
-                                    .stroke(Color(hex: "#5C55E8").opacity(0.35), lineWidth: 1)
-                            )
-                    }
+            ZStack {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.black.opacity(0.07))
                 }
+
+                Image(systemName: systemName)
+                    .font(.satoshi(size: 24, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.35))
+            }
+            .frame(width: 96, height: 46)
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(systemName))
@@ -950,7 +938,7 @@ private struct FAQItem: Hashable, Identifiable {
     static let about = [
         FAQItem(
             id: "other-phones",
-            question: "Does POV work for other phones too?",
+            question: "Does Tetamu work for other phones too?",
             answer: "Yes. Guests can join from a supported mobile browser through the event link or QR code."
         ),
         FAQItem(
@@ -960,7 +948,7 @@ private struct FAQItem: Hashable, Identifiable {
         ),
         FAQItem(
             id: "without-internet",
-            question: "Does POV work without internet?",
+            question: "Does Tetamu work without internet?",
             answer: "An internet connection is needed to join events, sync photos, and publish galleries."
         ),
         FAQItem(
@@ -1003,9 +991,9 @@ private struct SettingsAlert: Identifiable {
 }
 
 private extension Image {
-    func settingsIconStyle(size: CGFloat = 27) -> some View {
+    func settingsIconStyle(size: CGFloat = 20) -> some View {
         font(.system(size: size, weight: .regular))
-            .foregroundStyle(Color.white.opacity(0.38))
-            .frame(width: 34)
+            .foregroundStyle(Color.black.opacity(0.5))
+            .frame(width: 28)
     }
 }

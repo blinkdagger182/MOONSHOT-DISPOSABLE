@@ -115,8 +115,8 @@ export default function Support() {
             <div className="space-y-3">
               <p>
                 <strong>Email:</strong>{" "}
-                <a href="mailto:support@disposable.app" className="text-primary hover:underline">
-                  support@disposable.app
+                <a href="mailto:support@tetamu.app" className="text-primary hover:underline">
+                  support@tetamu.app
                 </a>
               </p>
               <p>

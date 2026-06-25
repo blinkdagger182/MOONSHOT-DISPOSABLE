@@ -78,9 +78,9 @@ struct ContactFormView: View {
                                 .foregroundColor(acceptedTerms ? .green : .gray)
                         }
                         Text("I accept the ")
-                        + Text("[Privacy Policy](https://sites.google.com/view/disposable-app/accueil)").foregroundColor(.blue)
+                        + Text("[Privacy Policy](https://www.tetamu.app/privacy)").foregroundColor(.blue)
                         + Text(" and ")
-                        + Text("[Terms & Conditions](https://sites.google.com/view/disposable-app/accueil)").foregroundColor(.blue)
+                        + Text("[Terms & Conditions](https://www.tetamu.app/terms)").foregroundColor(.blue)
                     }
                     .font(.satoshi(.footnote))
                 }

@@ -1,8 +1,8 @@
 //
-//  PrivacyPolicy.swift
+//  PrivacyPolicyView.swift
 //  Disposable
 //
-//  Created by Clementine CUREL on 19/01/2025.
+//  Updated from https://www.tetamu.app/privacy
 //
 
 import SwiftUI
@@ -11,68 +11,29 @@ struct PrivacyPolicyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("Last updated: May 2026")
+                    .font(.satoshi(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
 
-                SectionHeader(title: "Owner and Data Controller")
-                Paragraph(text: """
-                Clémentine Curel
-                Contact email: clem951@hotmail.fr
-                """)
-                
-                SectionHeader(title: "Types of Data Collected")
-                Paragraph(text: """
-                1. Personal Data: When you use the contact form, we collect your name and email address. This data is saved to our database for the purpose of responding to your inquiries.
-                2. Usage Data: We do not collect or save any usage data.
-                3. Device Data: No device data is collected.
-                4. Location Data: We do not collect location data.
-                5. Photos: Photos taken and saved within our app are stored temporarily and are deleted 1 hour after the end of the event.
-                """)
-                
-                SectionHeader(title: "Data Collection Details")
-                Paragraph(text: """
-                - We do not collect any other types of data.
-                - No data is shared with third parties.
-                """)
-                
-                SectionHeader(title: "Retention Time")
-                Paragraph(text: """
-                - Data related to events (including photos) is stored for the duration of the event, which can be up to a maximum of 25 hours, depending on the event settings.
-                """)
-                
-                SectionHeader(title: "Users' Rights")
-                Paragraph(text: """
-                - You can request access, correction, or deletion of your data by contacting us via the contact form in the app's settings or via our website.
-                """)
-                Link("Disposable App Website", destination: URL(string: "https://sites.google.com/view/disposable-app/accueil")!)
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 10)
-                
-                SectionHeader(title: "Data Security")
-                Paragraph(text: """
-                - We are committed to protecting your data and ensuring its security.
-                """)
-                
-                SectionHeader(title: "Compliance")
-                Paragraph(text: """
-                - We comply with the General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA).
-                - To comply with GDPR and CCPA, we:
-                  - Obtain explicit consent from users before collecting any personal data.
-                  - Provide clear information on data collection and processing.
-                  - Offer users the ability to access, correct, or delete their data.
-                  - Implement data protection measures to secure user data.
-                """)
-                
-                SectionHeader(title: "Contact Information")
-                Paragraph(text: """
-                - If you have any questions or concerns about our privacy practices, please contact us via email at clem951@hotmail.fr, through the contact form in the app, or on our website.
-                """)
-                
-                SectionHeader(title: "Policy Updates")
-                Paragraph(text: """
-                - We may update this privacy policy from time to time. Any changes will be posted on this page.
-                """)
+                LegalSectionHeader(title: "Introduction")
+                LegalParagraph(text: "Tetamu operates the Tetamu application. This policy explains how personal data is collected, used, and disclosed when you use the service.")
+
+                LegalSectionHeader(title: "Information Collection and Use")
+                LegalParagraph(text: "Tetamu collects information you provide directly when you create an account, take part in an event, or contact support. This may include your name, email, photos, and profile information.")
+
+                LegalSectionHeader(title: "Photo Data")
+                LegalParagraph(text: "Uploaded photos are stored temporarily and are automatically deleted after the event ends or after the applicable retention period expires. Tetamu does not store event photos permanently.")
+
+                LegalSectionHeader(title: "Latest Version")
+                Link("View the current privacy policy on tetamu.app", destination: URL(string: "https://www.tetamu.app/privacy")!)
+                    .font(.satoshi(.body, weight: .medium))
+
+                LegalSectionHeader(title: "Contact")
+                LegalParagraph(text: "For privacy questions, contact support@tetamu.app.")
             }
             .padding()
         }
         .navigationTitle("Privacy Policy")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
