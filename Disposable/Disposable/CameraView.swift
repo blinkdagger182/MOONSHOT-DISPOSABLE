@@ -11,7 +11,7 @@ import UIKit
 struct CameraView: View {
     let eventID: String
     let userName: String
-    var eventName: String = "Rizhan's House Party"
+    var eventName: String = "Tetamu Event"
     var endDateText: String = "Ends on 23 May"
     var closeAction: () -> Void = {}
 

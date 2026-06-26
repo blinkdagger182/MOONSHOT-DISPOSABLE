@@ -47,7 +47,7 @@ struct HomeView: View {
 
     @State private var eventEndTime: Date = Date()
     @State private var revealSetting: String = "Immediately"
-    @State private var homeEventName = "Rizhan's House Party"
+    @State private var homeEventName = "Your Event"
     @State private var phoneShowingBack = false
     @State private var hasInitializedDashboardControls = false
     @State private var selectedGuestLimit = 10
@@ -88,15 +88,6 @@ struct HomeView: View {
             .onAppear {
                 restoreEventState()
                 loadMyCreatedEvents()
-
-                // Heal stale eventData: if stored event has no valid Supabase ID,
-                // replace it with the most recently created event from myCreatedEvents
-                if (eventData?["eventId"] as? String) == nil || (eventData?["eventId"] as? String) == "noEvent" {
-                    if let first = myCreatedEvents.first {
-                        eventData = first
-                        isInEvent = true
-                    }
-                }
 
                 syncHomeEventName()
                 phoneShowingBack = false
@@ -394,6 +385,7 @@ struct HomeView: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.88), value: modal)
         .onPreferenceChange(HomeSheetHeightPreferenceKey.self) { height in
             guard height > 0 else { return }
+            guard modal != .share else { return }
             let persistentButtonHeight: CGFloat = modal == .details ? 76 : 0
             let detentHeight = clampedHomeModalHeight(height + persistentButtonHeight)
             guard abs(homeModalMeasuredHeight - detentHeight) > 1 else { return }
@@ -522,7 +514,11 @@ struct HomeView: View {
     private func loadMyCreatedEvents() {
         if let data = UserDefaults.standard.data(forKey: "myCreatedEvents"),
            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            myCreatedEvents = arr
+            let filtered = arr.filter(isValidStoredEvent)
+            myCreatedEvents = filtered
+            if filtered.count != arr.count {
+                saveMyCreatedEvents()
+            }
         }
     }
 
@@ -773,10 +769,17 @@ struct HomeView: View {
 
     private func restoreEventState() {
         if let savedData = UserDefaults.standard.data(forKey: "currentEventData"),
-           let decodedData = try? JSONSerialization.jsonObject(with: savedData, options: []) as? [String: Any] {
-            self.eventData = decodedData
-            self.isInEvent = UserDefaults.standard.bool(forKey: "isInEvent")
+           let decodedData = try? JSONSerialization.jsonObject(with: savedData, options: []) as? [String: Any],
+           isValidStoredEvent(decodedData),
+           UserDefaults.standard.bool(forKey: "isInEvent") {
+            eventData = decodedData
+            isInEvent = true
             syncHomeEventName()
+        } else {
+            UserDefaults.standard.removeObject(forKey: "currentEventData")
+            UserDefaults.standard.set(false, forKey: "isInEvent")
+            eventData = nil
+            isInEvent = false
         }
     }
 
@@ -785,7 +788,7 @@ struct HomeView: View {
            !storedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             homeEventName = storedName
         } else if homeEventName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            homeEventName = "Rizhan's House Party"
+            homeEventName = "Your Event"
         }
 
         coverDraft.title = eventData?["coverTitle"] as? String ?? homeEventName
@@ -799,7 +802,7 @@ struct HomeView: View {
 
     private func saveEventName(_ newValue: String) {
         let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedName = trimmedName.isEmpty ? "Rizhan's House Party" : trimmedName
+        let resolvedName = trimmedName.isEmpty ? "Your Event" : trimmedName
 
         homeEventName = resolvedName
         eventData?["eventName"] = resolvedName
@@ -844,6 +847,13 @@ struct HomeView: View {
               let encodedData = try? JSONSerialization.data(withJSONObject: eventData, options: []) else { return }
         UserDefaults.standard.set(encodedData, forKey: "currentEventData")
         UserDefaults.standard.set(isInEvent, forKey: "isInEvent")
+    }
+
+    private func isValidStoredEvent(_ dict: [String: Any]) -> Bool {
+        guard let eventId = dict["eventId"] as? String else { return false }
+        let trimmedId = eventId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedId.isEmpty, trimmedId != "noEvent" else { return false }
+        return true
     }
 
     private func endEvent() {
@@ -938,8 +948,8 @@ private enum HomeCoverStyle: String, CaseIterable, Identifiable {
 
 private struct HomeCoverDraft {
     var style: HomeCoverStyle = .polaroid
-    var title: String = "Rizhan's House Party"
-    var subtitle: String = "23.05.2026"
+    var title: String = "Your Event"
+    var subtitle: String = "Invite your guests"
     var buttonTitle: String = "Take Photos"
     var image: UIImage?
 }
@@ -1270,7 +1280,7 @@ private struct HomeEventDetailsSheet: View {
         }
         .onAppear {
             titleDraft = eventName
-            if coverDraft.title == "Rizhan's House Party", eventName != coverDraft.title {
+            if coverDraft.title == "Your Event", eventName != coverDraft.title {
                 coverDraft.title = eventName
             }
         }
@@ -1748,9 +1758,9 @@ private struct GuestFocusedSelector: View {
         guestLevels.firstIndex(of: selectedLimit) ?? 0
     }
 
-    private var priceText: String {
-        selectedLimit == 10 ? "FREE" : "$\(max(selectedIndex, 1) * 5)"
-    }
+//    private var priceText: String {
+//        selectedLimit == 10 ? "FREE" : "$\(max(selectedIndex, 1) * 5)"
+//    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -1766,21 +1776,14 @@ private struct GuestFocusedSelector: View {
                 Text("Up to \(selectedLimit)")
                     .font(.satoshi(size: 22, weight: .medium))
                     .foregroundStyle(.white.opacity(0.62))
-
-                Spacer()
-
-                Text(priceText)
-                    .font(.satoshi(size: 18, weight: .black))
-                    .tracking(2)
-                    .foregroundStyle(.white.opacity(0.62))
             }
 
-            if selectedLimit > 10 {
-                Text("Each increase unlocks a larger guest tier and requires payment before publishing.")
-                    .font(.satoshi(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.42))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+//            if selectedLimit > 10 {
+//                Text("Each increase unlocks a larger guest tier and requires payment before publishing.")
+//                    .font(.satoshi(size: 13, weight: .medium))
+//                    .foregroundStyle(.white.opacity(0.42))
+//                    .fixedSize(horizontal: false, vertical: true)
+//            }
         }
         .onAppear {
             if !guestLevels.contains(selectedLimit) {
@@ -1961,119 +1964,136 @@ private struct ShareEventCardSheet: View {
 
     var body: some View {
         GeometryReader { geo in
-        ZStack {
-            LinearGradient(
-                colors: selectedBackground.colors,
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            ZStack {
+                LinearGradient(
+                    colors: selectedBackground.colors,
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                HStack {
-                    Button(action: dismissAction) {
-                        Image(systemName: "chevron.down")
-                            .font(.satoshi(.title, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.08), in: Circle())
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        HStack {
+                            Button(action: dismissAction) {
+                                Image(systemName: "chevron.down")
+                                    .font(.satoshi(.title, weight: .regular))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.08), in: Circle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer()
+                            VStack(spacing: 2) {
+                                Text(selectedTemplate.title)
+                                    .font(.satoshi(.title3, weight: .black))
+                                    .foregroundStyle(.white)
+                                Text("Swipe to change style")
+                                    .font(.satoshi(.headline, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.55))
+                            }
+                            Spacer()
+                            Image(systemName: "lightbulb")
+                                .font(.satoshi(.title3, weight: .medium))
+                                .foregroundStyle(Color(hex: "#FFD324"))
+                                .frame(width: 58, height: 58)
+                                .background(Color.white.opacity(0.13), in: Circle())
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, max(geo.safeAreaInsets.top, 10))
+
+                        Rectangle()
+                            .fill(.white.opacity(0.08))
+                            .frame(height: 1)
+                            .padding(.horizontal, 18)
+
+                        Spacer(minLength: 8)
+
+                        TabView(selection: $selectedTemplate) {
+                            ForEach(QRShareTemplateStyle.allCases) { template in
+                                QRShareTemplateCard(
+                                    summary: summary,
+                                    qrCodeImage: qrCodeImage,
+                                    template: template,
+                                    background: selectedBackground,
+                                    qrColor: selectedQRColor,
+                                    displayMode: .preview
+                                )
+                                .padding(.horizontal, 38)
+                                .tag(template)
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .frame(height: 430)
+
+                        HStack(spacing: 7) {
+                            ForEach(QRShareTemplateStyle.allCases) { template in
+                                Circle()
+                                    .fill(selectedTemplate == template ? Color.white : Color.white.opacity(0.28))
+                                    .frame(width: selectedTemplate == template ? 8 : 6, height: selectedTemplate == template ? 8 : 6)
+                                    .animation(.spring(response: 0.28, dampingFraction: 0.78), value: selectedTemplate)
+                            }
+                        }
+                        .padding(.top, 4)
+
+                        Color.clear
+                            .frame(height: 180)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            Menu {
+                                ForEach(QRShareBackground.allCases) { background in
+                                    Button(background.title) {
+                                        selectedBackground = background
+                                    }
+                                }
+                            } label: {
+                                ShareOptionButton(icon: "rectangle.portrait", title: selectedBackground.title)
+                            }
 
-                    Spacer()
-                    VStack(spacing: 2) {
-                        Text(selectedTemplate.title)
+                            Menu {
+                                ForEach(QRShareColor.allCases) { color in
+                                    Button(color.title) {
+                                        selectedQRColor = color
+                                    }
+                                }
+                            } label: {
+                                ShareOptionButton(icon: "circle.fill", title: selectedQRColor.title)
+                            }
+                        }
+                        .padding(.horizontal, 18)
+
+                        Button(action: shareAction) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("Share")
+                            }
                             .font(.satoshi(.title3, weight: .black))
                             .foregroundStyle(.white)
-                        Text("Swipe to change style")
-                            .font(.satoshi(.headline, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 66)
+                            .background(Color.black, in: RoundedRectangle(cornerRadius: 15))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, max(geo.safeAreaInsets.bottom, 12))
                     }
-                    Spacer()
-                    Image(systemName: "lightbulb")
-                        .font(.satoshi(.title3, weight: .medium))
-                        .foregroundStyle(Color(hex: "#FFD324"))
-                        .frame(width: 58, height: 58)
-                        .background(Color.white.opacity(0.13), in: Circle())
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, max(geo.safeAreaInsets.top, 10))
-
-                Rectangle()
-                    .fill(.white.opacity(0.08))
-                    .frame(height: 1)
-                    .padding(.horizontal, 18)
-
-                Spacer(minLength: 8)
-
-                TabView(selection: $selectedTemplate) {
-                    ForEach(QRShareTemplateStyle.allCases) { template in
-                        QRShareTemplateCard(
-                            summary: summary,
-                            qrCodeImage: qrCodeImage,
-                            template: template,
-                            background: selectedBackground,
-                            qrColor: selectedQRColor,
-                            displayMode: .preview
+                    .padding(.top, 14)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.12), Color.black.opacity(0.28)],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                        .padding(.horizontal, 38)
-                        .tag(template)
-                    }
+                        .ignoresSafeArea(edges: .bottom)
+                    )
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(height: 430)
-
-                HStack(spacing: 7) {
-                    ForEach(QRShareTemplateStyle.allCases) { template in
-                        Circle()
-                            .fill(selectedTemplate == template ? Color.white : Color.white.opacity(0.28))
-                            .frame(width: selectedTemplate == template ? 8 : 6, height: selectedTemplate == template ? 8 : 6)
-                            .animation(.spring(response: 0.28, dampingFraction: 0.78), value: selectedTemplate)
-                    }
-                }
-                .padding(.top, 4)
-
-                Spacer(minLength: 10)
-
-                HStack(spacing: 12) {
-                    Menu {
-                        ForEach(QRShareBackground.allCases) { background in
-                            Button(background.title) {
-                                selectedBackground = background
-                            }
-                        }
-                    } label: {
-                        ShareOptionButton(icon: "rectangle.portrait", title: selectedBackground.title)
-                    }
-
-                    Menu {
-                        ForEach(QRShareColor.allCases) { color in
-                            Button(color.title) {
-                                selectedQRColor = color
-                            }
-                        }
-                    } label: {
-                        ShareOptionButton(icon: "circle.fill", title: selectedQRColor.title)
-                    }
-                }
-                .padding(.horizontal, 18)
-
-                Button(action: shareAction) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "square.and.arrow.up")
-                        Text("Share")
-                    }
-                    .font(.satoshi(.title3, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 66)
-                    .background(Color.black, in: RoundedRectangle(cornerRadius: 15))
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, max(geo.safeAreaInsets.bottom, 12))
             }
         }
-        } // GeometryReader
     }
 }
 
@@ -2449,6 +2469,7 @@ private struct HomeCoverEditorScreen: View {
     @State private var activeTool: HomeCoverEditorTool = .photo
     @State private var selectedPhotoItem: PhotosPickerItem?
     @FocusState private var textFieldFocused: Bool
+    private let editorFieldID = "home-cover-editor-field"
 
     var body: some View {
         GeometryReader { proxy in
@@ -2460,37 +2481,71 @@ private struct HomeCoverEditorScreen: View {
             ZStack {
                 editorBackground(width: proxy.size.width, height: proxy.size.height)
 
-                VStack(spacing: 12) {
-                    header
-                        .padding(.top, 18)
+                ScrollViewReader { scrollProxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 12) {
+                            header
+                                .padding(.top, 18)
 
-                    coverCarousel(width: phoneWidth, height: phoneHeight)
-                        .frame(height: phoneHeight)
-                        .padding(.top, 6)
+                            coverCarousel(width: phoneWidth, height: phoneHeight)
+                                .frame(height: phoneHeight)
+                                .padding(.top, 6)
 
-                    editorField
-                        .frame(minHeight: 34, alignment: .center)
-                        .padding(.horizontal, 22)
+                            editorField
+                                .frame(minHeight: 34, alignment: .center)
+                                .padding(.horizontal, 22)
+                                .id(editorFieldID)
 
-                    toolBar
-                        .frame(height: 88)
-                        .padding(.horizontal, 22)
+                            toolBar
+                                .frame(height: 88)
+                                .padding(.horizontal, 22)
 
-                    Button(action: doneAction) {
-                        Text("Done")
-                            .font(.satoshi(size: 18, weight: .black))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 58)
-                            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 28)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
+                            Color.clear
+                                .frame(height: 10)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .top)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, max(proxy.safeAreaInsets.bottom, 12))
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Button(action: doneAction) {
+                            Text("Done")
+                                .font(.satoshi(size: 18, weight: .black))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 58)
+                                .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 28)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 10)
+                        .padding(.bottom, editorSafeBottom)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.clear, Color.black.opacity(0.2), Color.black.opacity(0.36)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .ignoresSafeArea(edges: .bottom)
+                        )
+                    }
+                    .onChange(of: textFieldFocused) { _, focused in
+                        guard focused else { return }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                            scrollProxy.scrollTo(editorFieldID, anchor: .center)
+                        }
+                    }
+                    .onChange(of: activeTool) { _, tool in
+                        guard tool != .photo else { return }
+                        DispatchQueue.main.async {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                scrollProxy.scrollTo(editorFieldID, anchor: .center)
+                            }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -2499,7 +2554,6 @@ private struct HomeCoverEditorScreen: View {
         }
         .matchedGeometryEffect(id: "cover-editor-card", in: namespace)
         .clipShape(RoundedRectangle(cornerRadius: 28))
-        .ignoresSafeArea(edges: .bottom)
         .onChange(of: selectedPhotoItem) { _, item in
             loadSelectedPhoto(item)
         }
@@ -3579,6 +3633,10 @@ private struct POVDashboardLayout: View {
     @State private var phoneRestingAngle: Double = 0
     @State private var heroPageIndex: Int = 0
 
+    private var hasCreatedEvents: Bool {
+        !myCreatedEvents.isEmpty
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let topInset = max(proxy.safeAreaInsets.top, 18)
@@ -3672,26 +3730,26 @@ private struct POVDashboardLayout: View {
                     }
                 }
             } else {
-                homeHeroCard(phoneHeight: phoneHeight)
+                homeHeroCard(phoneHeight: phoneHeight, isOnboarding: !hasCreatedEvents)
                     .frame(height: heroHeight)
             }
 
-            Button(action: scheduleAction) {
-                actionRow(
-                    icon: "plus.square",
-                    title: "Create the event",
-                    subtitle: "Set up your Tetamu event and share it with guests",
-                    background: Color.black,
-                    foreground: .white
-                )
+            if hasCreatedEvents {
+                Button(action: scheduleAction) {
+                    actionRow(
+                        icon: "plus.square",
+                        title: "Create an event",
+                        subtitle: "Set up your Tetamu event and share it with guests"
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 16)
         }
     }
 
     @ViewBuilder
-    private func homeHeroCard(phoneHeight: CGFloat) -> some View {
+    private func homeHeroCard(phoneHeight: CGFloat, isOnboarding: Bool = false) -> some View {
         let heroGradient = LinearGradient(
             colors: [Color(hex: "#8C8073"), Color(hex: "#69635F"), Color(hex: "#555152")],
             startPoint: .top,
@@ -3700,7 +3758,7 @@ private struct POVDashboardLayout: View {
 
         VStack(spacing: 0) {
             HStack(alignment: .center) {
-                Text("HOSTING")
+                Text(isOnboarding ? "WELCOME TO TETAMU" : "HOSTING")
                     .font(.satoshi(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.4))
                     .tracking(1.3)
@@ -3714,40 +3772,45 @@ private struct POVDashboardLayout: View {
             .padding(.horizontal, 12)
 
             ZStack {
-                Text(eventName)
-                    .font(.satoshi(size: 29, weight: .italic))
+                Text(isOnboarding ? "Create one event.\nCollect every memory." : eventName)
+                    .font(.satoshi(size: isOnboarding ? 32 : 29, weight: .italic))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(isOnboarding ? 2 : 1)
                     .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
 
-                HStack {
-                    Spacer()
+                if !isOnboarding {
+                    HStack {
+                        Spacer()
 
-                    Button(action: editAction) {
-                        Image(systemName: "pencil")
-                            .font(.satoshi(size: 15, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.82))
-                            .frame(width: 52, height: 38)
-                            .background(Color.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
+                        Button(action: editAction) {
+                            Image(systemName: "pencil")
+                                .font(.satoshi(size: 15, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.82))
+                                .frame(width: 52, height: 38)
+                                .background(Color.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.top, 10)
             .padding(.horizontal, 22)
 
-            Text(subtitle)
+            Text(isOnboarding ? "Start with a cover, share one QR or link, and let guests fill the gallery together." : subtitle)
                 .font(.satoshi(size: 18, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.top, 6)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 26)
 
             SwipeablePhoneMockup(
-                eventName: eventName,
+                eventName: isOnboarding ? "Your Event" : eventName,
                 coverDraft: coverDraft,
                 showingBack: $phoneShowingBack,
                 dragOffset: $dragOffset,
@@ -3756,20 +3819,59 @@ private struct POVDashboardLayout: View {
             .frame(height: phoneHeight)
             .padding(.top, 14)
 
-            Text(statusText)
-                .font(.satoshi(size: 17, weight: .medium))
-                .foregroundStyle(.white.opacity(0.42))
-                .multilineTextAlignment(.center)
-                .padding(.top, 12)
-                .padding(.horizontal, 20)
+            Group {
+                if isOnboarding {
+                    HStack(spacing: 10) {
+                        onboardingPill(icon: "photo.on.rectangle", text: "Design the cover")
+                        onboardingPill(icon: "qrcode", text: "Invite your guests")
+                        onboardingPill(icon: "camera", text: "Collect the moments")
+                    }
+                    .padding(.top, 12)
+                    .padding(.horizontal, 22)
 
-            HStack(spacing: 14) {
-                dashboardToolButton(systemName: "camera", action: cameraAction)
-                dashboardToolButton(systemName: "square.and.arrow.up", action: shareAction)
-                dashboardToolButton(systemName: "qrcode", action: qrAction)
+                    Button(action: scheduleAction) {
+                        HStack(spacing: 8) {
+                            Text("Create an event")
+                            Image(systemName: "arrow.right")
+                        }
+                        .font(.satoshi(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "#F0B35E"), Color(hex: "#D86B7D"), Color(hex: "#7A5AF8")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 15)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15)
+                                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.18), radius: 16, y: 10)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 22)
+                } else {
+                    Text(statusText)
+                        .font(.satoshi(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                        .padding(.horizontal, 20)
+
+                    HStack(spacing: 14) {
+                        dashboardToolButton(systemName: "camera", action: cameraAction)
+                        dashboardToolButton(systemName: "square.and.arrow.up", action: shareAction)
+                        dashboardToolButton(systemName: "qrcode", action: qrAction)
+                    }
+                    .padding(.top, 12)
+                    .padding(.horizontal, 22)
+                }
             }
-            .padding(.top, 12)
-            .padding(.horizontal, 22)
             .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -3779,6 +3881,22 @@ private struct POVDashboardLayout: View {
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
         .padding(.horizontal, 16)
+    }
+
+    private func onboardingPill(icon: String, text: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.satoshi(size: 12, weight: .bold))
+            Text(text)
+                .font(.satoshi(size: 12, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+        }
+        .foregroundStyle(.white.opacity(0.84))
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(Color.white.opacity(0.09), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
     }
 
     private func dashboardToolButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -3798,22 +3916,22 @@ private struct POVDashboardLayout: View {
         .accessibilityLabel(Text(systemName))
     }
 
-    private func actionRow(icon: String, title: String, subtitle: String, background: Color, foreground: Color) -> some View {
+    private func actionRow(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.satoshi(size: 26, weight: .bold))
                 .frame(width: 30)
-                .foregroundStyle(foreground.opacity(0.72))
+                .foregroundStyle(Color.white.opacity(0.82))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.satoshi(size: 20, weight: .bold))
-                    .foregroundStyle(foreground)
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.84)
                 Text(subtitle)
                     .font(.satoshi(size: 16, weight: .medium))
-                    .foregroundStyle(foreground.opacity(0.62))
+                    .foregroundStyle(Color.white.opacity(0.72))
                     .lineLimit(1)
                     .minimumScaleFactor(0.84)
             }
@@ -3822,11 +3940,23 @@ private struct POVDashboardLayout: View {
 
             Image(systemName: "arrow.right")
                 .font(.satoshi(size: 19, weight: .bold))
-                .foregroundStyle(foreground.opacity(0.74))
+                .foregroundStyle(Color.white.opacity(0.84))
         }
         .padding(.horizontal, 20)
         .frame(height: 66)
-        .background(background, in: RoundedRectangle(cornerRadius: 14))
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#F0B35E"), Color(hex: "#D86B7D"), Color(hex: "#7A5AF8")],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 14)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.16), radius: 18, y: 10)
     }
 
     private func bottomBar(safeBottom: CGFloat, showsTopBorder: Bool = true) -> some View {
@@ -4593,37 +4723,48 @@ private struct POVCameraPermissionView: View {
     let requestAccessAction: () -> Void
 
     var body: some View {
-        ZStack {
-            CameraStarterBackdrop(coverDraft: coverDraft)
-                .blur(radius: 10)
-                .overlay(Color.black.opacity(0.34))
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            let safeBottom = proxy.safeAreaInsets.bottom
+            let controlsClearance = safeBottom + 188
+            let topSpacing = max(proxy.safeAreaInsets.top + 118, proxy.size.height * 0.24)
 
-            CameraChrome(
-                eventName: eventName,
-                endDateText: endDateText,
-                dimmed: true,
-                closeSystemName: "xmark",
-                dismissAction: dismissAction
-            )
+            ZStack {
+                CameraStarterBackdrop(coverDraft: coverDraft)
+                    .blur(radius: 10)
+                    .overlay(Color.black.opacity(0.34))
+                    .ignoresSafeArea()
 
-            VStack {
-                Spacer()
-                accessCard
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 280)
+                CameraChrome(
+                    eventName: eventName,
+                    endDateText: endDateText,
+                    dimmed: true,
+                    closeSystemName: "xmark",
+                    dismissAction: dismissAction
+                )
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: topSpacing)
+
+                    accessCard
+                        .frame(maxWidth: min(proxy.size.width - 36, 420))
+                        .padding(.horizontal, 18)
+
+                    Spacer(minLength: controlsClearance)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                CameraBottomControls(
+                    shotsRemaining: shotsAllowed,
+                    totalShots: shotsAllowed,
+                    isFlashOn: false,
+                    dimmed: true,
+                    thumbnailImage: coverDraft.image,
+                    flashAction: {},
+                    shutterAction: {},
+                    flipAction: {}
+                )
             }
-
-            CameraBottomControls(
-                shotsRemaining: shotsAllowed,
-                totalShots: shotsAllowed,
-                isFlashOn: false,
-                dimmed: true,
-                thumbnailImage: coverDraft.image,
-                flashAction: {},
-                shutterAction: {},
-                flipAction: {}
-            )
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .background(Color.black)
     }
@@ -6587,17 +6728,17 @@ private struct CreatePOVFlowView: View {
             .padding(.horizontal, 20)
             .padding(.top, 14)
 
-            HStack {
-                Text("Price")
-                    .font(.satoshi(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
-                Spacer()
-                Text(guestTierIndex == 0 ? "FREE" : "$\(guestTierIndex * 5)")
-                    .font(.satoshi(size: 15, weight: .black))
-                    .foregroundStyle(guestTierIndex == 0 ? Color.black : .white)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
+//            HStack {
+//                Text("Price")
+//                    .font(.satoshi(size: 15, weight: .medium))
+//                    .foregroundStyle(.white.opacity(0.6))
+//                Spacer()
+//                Text(guestTierIndex == 0 ? "FREE" : "$\(guestTierIndex * 5)")
+//                    .font(.satoshi(size: 15, weight: .black))
+//                    .foregroundStyle(guestTierIndex == 0 ? Color.black : .white)
+//            }
+//            .padding(.horizontal, 20)
+//            .padding(.top, 14)
 
             Spacer()
 

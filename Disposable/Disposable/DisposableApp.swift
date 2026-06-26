@@ -126,7 +126,7 @@ struct DisposableApp: App {
     }
 
     private var currentEventName: String {
-        eventData?["eventName"] as? String ?? "Rizhan's House Party"
+        eventData?["eventName"] as? String ?? "Tetamu Event"
     }
 
     private var currentEventEndDateText: String {

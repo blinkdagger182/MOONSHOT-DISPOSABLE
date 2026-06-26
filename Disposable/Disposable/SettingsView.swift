@@ -29,27 +29,32 @@ struct SettingsView: View {
     @State private var alert: SettingsAlert?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            NavigationStack(path: $navigationPath) {
-                SettingsScreen(
-                    profileName: profileName,
-                    profileUsername: profileUsername,
-                    openProfile: openProfile,
-                    openRoute: openRoute,
-                    clearCache: clearCache
-                )
-                .navigationDestination(for: SettingsRoute.self, destination: destination)
-                .alert(item: $alert, content: alertContent)
-                .toolbar(.hidden, for: .navigationBar)
-                .toolbar(.hidden, for: .tabBar)
-            }
+        GeometryReader { proxy in
+            ZStack(alignment: .bottom) {
+                NavigationStack(path: $navigationPath) {
+                    SettingsScreen(
+                        profileName: profileName,
+                        profileUsername: profileUsername,
+                        openProfile: openProfile,
+                        openRoute: openRoute,
+                        clearCache: clearCache
+                    )
+                    .navigationDestination(for: SettingsRoute.self, destination: destination)
+                    .alert(item: $alert, content: alertContent)
+                    .toolbar(.hidden, for: .navigationBar)
+                    .toolbar(.hidden, for: .tabBar)
+                }
 
-            AppBottomTabBar(
-                selectedTab: .settings,
-                homeAction: openHomeTab,
-                cameraAction: openCameraTab,
-                settingsAction: {}
-            )
+                AppBottomTabBar(
+                    selectedTab: .settings,
+                    safeBottom: proxy.safeAreaInsets.bottom,
+                    homeAction: openHomeTab,
+                    cameraAction: openCameraTab,
+                    settingsAction: {}
+                )
+                .ignoresSafeArea(.container, edges: .bottom)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .ignoresSafeArea(.container, edges: .bottom)
     }
@@ -889,6 +894,7 @@ enum AppBottomTabSelection {
 
 struct AppBottomTabBar: View {
     let selectedTab: AppBottomTabSelection
+    let safeBottom: CGFloat
     let homeAction: () -> Void
     let cameraAction: () -> Void
     let settingsAction: () -> Void
@@ -899,9 +905,9 @@ struct AppBottomTabBar: View {
             bottomButton("camera", isSelected: selectedTab == .camera, action: cameraAction)
             bottomButton("gearshape", isSelected: selectedTab == .settings, action: settingsAction)
         }
-        .frame(height: 60)
-        .padding(.horizontal, 28)
-        .padding(.bottom, 10)
+        .frame(height: 68)
+        .padding(.horizontal, 34)
+        .padding(.bottom, max(safeBottom, 12))
         .background(Color.white)
         .overlay(alignment: .top) {
             Rectangle()
@@ -912,18 +918,19 @@ struct AppBottomTabBar: View {
 
     private func bottomButton(_ systemName: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            ZStack {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.black.opacity(0.07))
-                }
-
-                Image(systemName: systemName)
-                    .font(.satoshi(size: 24, weight: .medium))
-                    .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.35))
-            }
-            .frame(width: 96, height: 46)
-            .frame(maxWidth: .infinity)
+            Image(systemName: systemName)
+                .font(.satoshi(size: 28, weight: .medium))
+                .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.35))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    Group {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(Color.black.opacity(0.07))
+                        }
+                    }
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(systemName))
