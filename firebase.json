@@ -31,6 +31,10 @@
       {
         "source": "/clip",
         "destination": "/html/template.html"
+      },
+      {
+        "source": "/clips",
+        "destination": "/html/template.html"
       }
     ]
   },

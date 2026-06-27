@@ -654,7 +654,7 @@ struct HomeView: View {
     private func shareEventWebsite() {
         guard let eventId = eventData?["eventId"] as? String else { return }
 
-        let eventURL = "https://tetamu.app/clips?eventId=\(eventId)"
+        let eventURL = "https://tetamu.app/clip?eventId=\(eventId)"
         let message = "Check out the full gallery for the event! \(eventURL)"
 
         let activityVC = UIActivityViewController(activityItems: [message], applicationActivities: nil)
@@ -744,7 +744,7 @@ struct HomeView: View {
             ?? (eventData?["eventId"] as? String)
         guard let eventId, !eventId.isEmpty else { return }
 
-        let url = "https://tetamu.app/clips?eventId=\(eventId)"
+        let url = "https://tetamu.app/clip?eventId=\(eventId)"
         guard let data = url.data(using: .utf8),
               let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
 

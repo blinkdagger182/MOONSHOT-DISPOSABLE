@@ -38,9 +38,9 @@ MOONSHOT-DISPOSABLE/
 │   │   └── Disposable.entitlements  Associated domains for App Clip + universal links
 │   └── DisposableClip/           App Clip target (iOS only)
 │       ├── DisposableClipApp.swift  App Clip entry, extracts eventId from URL
-│       ├── BrowserClipExperience.swift  WKWebView loading guest.tetamu.app/html/template.html
+│       ├── BrowserClipExperience.swift  WKWebView loading tetamu.app clip flow
 │       └── DisposableClip.entitlements  appclips: associated domains
-├── public/                       Firebase Hosting web app (deployed to guest.tetamu.app)
+├── public/                       Firebase Hosting web app (served from tetamu.app)
 │   ├── html/template.html        Guest web camera UI (full camera + voice notes)
 │   ├── js/template.js            Full camera logic: Firebase, capture, upload, voice, gallery
 │   ├── css/template.css          Camera UI styles
@@ -61,13 +61,13 @@ MOONSHOT-DISPOSABLE/
 2. On submit: writes to Firestore `events/{eventId}` + `events/{eventId}/participants` (role: organizer)
 3. `eventId` = `"{eventName}_{UUID}"` — human-readable but unique
 4. Persists event to `UserDefaults` so app restores on relaunch
-5. Generates QR encoding `https://guest.tetamu.app/clip?eventId={eventId}`
+5. Generates QR encoding `https://tetamu.app/clips?eventId={eventId}`
 
 ### Guest Joining (QR Scan)
 | Platform | Flow |
 |----------|------|
-| iOS | AASA at `guest.tetamu.app` triggers App Clip → `BrowserClipExperience` loads `https://guest.tetamu.app/html/template.html?eventId=xxx` in WKWebView |
-| Android / browser | Firebase Hosting `/clip` rewrite serves `html/template.html` → same JS camera experience |
+| iOS | AASA at `tetamu.app` triggers App Clip / main app routing |
+| Android / browser | `tetamu.app` serves the guest camera experience |
 | Main app installed (iOS) | Universal link → `onOpenURL` in `DisposableApp.swift` → navigates to `JoinEventView` |
 
 ### Photo Capture
@@ -143,8 +143,7 @@ events/
 
 | URL | Purpose |
 |-----|---------|
-| `https://guest.tetamu.app/clip?eventId=xxx` | **QR code URL** — triggers App Clip on iOS, served by rewrite as template.html on Android/browser |
-| `https://guest.tetamu.app/html/template.html?eventId=xxx` | Web guest camera (direct) |
+| `https://tetamu.app/clips?eventId=xxx` | **QR / join URL** — opens the current Tetamu join flow |
 | `tetamu://` | iOS universal link (handled by `onOpenURL` in `DisposableApp`) |
 
 AASA config at `public/.well-known/apple-app-site-association`:
@@ -171,7 +170,7 @@ AASA config at `public/.well-known/apple-app-site-association`:
 |-----------|---------|---------|
 | Firebase Firestore | iOS + Web | Event data, participants, image metadata |
 | Firebase Storage | iOS + Web | Photo and voice note storage |
-| Firebase Hosting | Web | Serves `guest.tetamu.app` |
+| Firebase Hosting | Web | Serves `tetamu.app` |
 | AVFoundation | iOS | Camera capture |
 | CoreImage | iOS | QR code generation |
 | WKWebView | App Clip | Loads web guest experience |
